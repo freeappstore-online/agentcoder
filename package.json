@@ -1,15 +1,16 @@
 {
-  "name": "APPNAME",
+  "name": "agentcoder",
   "private": true,
   "packageManager": "pnpm@10.30.3",
   "engines": { "node": ">=22" },
   "pnpm": { "onlyBuiltDependencies": ["esbuild"] },
-  "repository": { "type": "git", "url": "git+https://github.com/freeappstore-online/APPNAME.git" },
+  "repository": { "type": "git", "url": "git+https://github.com/freeappstore-online/agentcoder.git" },
   "scripts": {
-    "dev": "pnpm --filter @APPNAME/web dev",
-    "build": "pnpm --filter @APPNAME/web build",
-    "preview": "pnpm --filter @APPNAME/web preview",
-    "typecheck": "pnpm --filter @APPNAME/web exec tsc -b",
-    "test": "pnpm --filter @APPNAME/web exec tsc -b"
+    "dev": "pnpm --filter @agentcoder/web dev",
+    "build": "pnpm --filter @agentcoder/web build",
+    "build:bridge": "pnpm --filter @agentcoder/bridge build",
+    "preview": "pnpm --filter @agentcoder/web preview",
+    "typecheck": "pnpm --filter @agentcoder/web exec tsc -b",
+    "test": "pnpm --filter @agentcoder/web exec tsc -b"
   }
 }

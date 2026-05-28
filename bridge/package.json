@@ -1,0 +1,28 @@
+{
+  "name": "@agentcoder/bridge",
+  "version": "0.1.0",
+  "description": "Local bridge for AgentCoder — relays tmux sessions to the web UI",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "agentcoder": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsup src/cli.ts src/index.ts --format esm --dts --clean",
+    "dev": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.7"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
