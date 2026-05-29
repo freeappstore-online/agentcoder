@@ -131,7 +131,24 @@ function tmux(...args) {
   }
 }
 function getTarget(sessionName) {
-  return `${sessionName}:0.0`;
+  const output = tmux(
+    "list-panes",
+    "-t",
+    sessionName,
+    "-s",
+    "-F",
+    "#{session_name}:#{window_index}.#{pane_index} #{window_name} #{pane_title}"
+  );
+  if (!output.trim()) return sessionName;
+  const lines = output.trim().split("\n");
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (lower.includes("claude") || lower.includes("\u2733")) {
+      const target = line.split(" ")[0];
+      if (target) return target;
+    }
+  }
+  return sessionName;
 }
 function sessionExists(name) {
   try {

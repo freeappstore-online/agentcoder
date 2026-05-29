@@ -17,9 +17,31 @@ function tmux(...args: string[]): string {
   }
 }
 
-/** Get the tmux target for a session (first pane of first window) */
+/**
+ * Get the best tmux target for a session.
+ * Finds the pane running Claude Code (by title/window name),
+ * falls back to the session's active pane.
+ */
 export function getTarget(sessionName: string): string {
-  return `${sessionName}:0.0`
+  // List panes for this session only (no -a flag)
+  const output = tmux(
+    'list-panes', '-t', sessionName, '-s',
+    '-F', '#{session_name}:#{window_index}.#{pane_index} #{window_name} #{pane_title}',
+  )
+  if (!output.trim()) return sessionName
+
+  const lines = output.trim().split('\n')
+  for (const line of lines) {
+    const lower = line.toLowerCase()
+    // Match Claude Code by pane title or window name
+    if (lower.includes('claude') || lower.includes('✳')) {
+      const target = line.split(' ')[0]
+      if (target) return target
+    }
+  }
+
+  // No Claude pane found — use session's active pane (tmux default)
+  return sessionName
 }
 
 /** Check if a tmux session exists */
