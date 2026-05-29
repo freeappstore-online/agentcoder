@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import {
   Bridge
-} from "./chunk-M5ZBS6GA.js";
+} from "./chunk-QYERO43Z.js";
 
 // src/tui.ts
 import readline from "readline";

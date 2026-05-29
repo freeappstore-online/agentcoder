@@ -72,13 +72,27 @@ export class Bridge {
 
     this.room.onPeers((peers) => {
       this.events.onPeers?.(peers.map((p) => p.login))
-      // New peer joined — send heartbeat immediately so they see "Bridge online"
+      // New peer joined — send heartbeat + current screen so they see state immediately
       this.sendHeartbeat()
+      this.replayCurrentScreens()
     })
   }
 
   setWatchList(names: string[]): void {
     this.watchSet = new Set(names)
+  }
+
+  private replayCurrentScreens(): void {
+    if (!this.watchSet) return
+    for (const session of this.watchSet) {
+      const screen = this.lastScreens.get(session)
+      if (screen?.trim()) {
+        this.sendOutput(session, screen)
+        const state = tmux.detectState(screen)
+        this.events.onSessionState?.(session, state)
+        this.room.send({ type: 'status', agent: session, state })
+      }
+    }
   }
 
   stop(): void {

@@ -223,10 +223,23 @@ var Bridge = class {
     this.room.onPeers((peers) => {
       this.events.onPeers?.(peers.map((p) => p.login));
       this.sendHeartbeat();
+      this.replayCurrentScreens();
     });
   }
   setWatchList(names) {
     this.watchSet = new Set(names);
+  }
+  replayCurrentScreens() {
+    if (!this.watchSet) return;
+    for (const session of this.watchSet) {
+      const screen = this.lastScreens.get(session);
+      if (screen?.trim()) {
+        this.sendOutput(session, screen);
+        const state = detectState(screen);
+        this.events.onSessionState?.(session, state);
+        this.room.send({ type: "status", agent: session, state });
+      }
+    }
   }
   stop() {
     if (this.pollTimer) clearInterval(this.pollTimer);

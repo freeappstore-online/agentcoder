@@ -32,6 +32,7 @@ declare class Bridge {
     constructor(config: BridgeConfig, events?: BridgeEvents);
     start(): void;
     setWatchList(names: string[]): void;
+    private replayCurrentScreens;
     stop(): void;
     private handleMessage;
     private pollSessions;
