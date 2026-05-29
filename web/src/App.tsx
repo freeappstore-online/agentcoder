@@ -19,11 +19,11 @@ function CopyLine({ text }: { text: string }) {
     setTimeout(() => setCopied(false), 1500)
   }
   return (
-    <div className="flex items-center justify-between gap-2 group">
-      <p className="text-[var(--muted)] truncate">{text}</p>
+    <div className="flex items-start justify-between gap-2 group">
+      <p className="text-[var(--muted)] break-all">{text}</p>
       <button
         onClick={copy}
-        className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-[var(--muted)] opacity-0 group-hover:opacity-100 hover:bg-[var(--surface)] transition-all"
+        className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-[var(--muted)] hover:bg-[var(--surface)] transition-all"
       >
         {copied ? 'Copied' : 'Copy'}
       </button>
@@ -80,7 +80,7 @@ function ConnectBridge({ onRoom }: { onRoom: (room: Room) => void }) {
         <Card>
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-[var(--ink)]">Setup your bridge</h3>
-            <div className="space-y-2 text-xs font-mono bg-[var(--bg)] rounded-lg p-3">
+            <div className="space-y-2 text-sm font-mono bg-[var(--bg)] rounded-lg p-3">
               <CopyLine text="npx github:freeappstore-online/agentcoder login" />
               <CopyLine text={`npx github:freeappstore-online/agentcoder start --session ${sessionId}`} />
             </div>
@@ -107,7 +107,7 @@ function StatusBar({ connected, bridgeOnline, agents, agentStates, onDisconnect 
   const agentState = activeAgent ? agentStates[activeAgent] : undefined
 
   return (
-    <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs sticky top-0 z-50">
+    <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm sticky top-0 z-50">
       <span className={`inline-flex items-center gap-1.5 ${connected ? 'text-emerald-500' : 'text-[var(--muted)]'}`}>
         <span className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-emerald-500' : 'bg-[var(--muted)]'}`} />
         {connected ? 'Connected' : 'Offline'}
@@ -129,7 +129,7 @@ function StatusBar({ connected, bridgeOnline, agents, agentStates, onDisconnect 
       <div className="ml-auto flex items-center gap-2">
         <button
           onClick={onDisconnect}
-          className="rounded px-2 py-0.5 text-xs text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--bg)] transition-colors"
+          className="rounded px-2 py-0.5 text-sm text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--bg)] transition-colors"
         >
           Disconnect
         </button>
@@ -267,7 +267,7 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
           <div className="space-y-3">
             <Card>
               <div>
-                <h3 className="text-xs font-medium uppercase tracking-wide text-[var(--muted)] mb-2">Summary</h3>
+                <h3 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)] mb-2">Summary</h3>
                 <p className="text-sm text-[var(--ink)] leading-relaxed">{lastTranslation.summary}</p>
               </div>
             </Card>
@@ -275,12 +275,12 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
             {lastTranslation.filesChanged.length > 0 && (
               <Card>
                 <div>
-                  <h3 className="text-xs font-medium uppercase tracking-wide text-[var(--muted)] mb-2">
+                  <h3 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)] mb-2">
                     Files changed ({lastTranslation.filesChanged.length})
                   </h3>
                   <div className="space-y-1">
                     {lastTranslation.filesChanged.map((f) => (
-                      <div key={f} className="text-xs font-mono text-[var(--ink)]">{f}</div>
+                      <div key={f} className="text-sm font-mono text-[var(--ink)]">{f}</div>
                     ))}
                   </div>
                 </div>
@@ -289,7 +289,7 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
 
             {lastTranslation.pendingDecision && (
               <div className="rounded-lg border-2 border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30 p-4">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-amber-800 dark:text-amber-200 mb-2">
+                <h3 className="text-sm font-medium uppercase tracking-wide text-amber-800 dark:text-amber-200 mb-2">
                   Waiting for your input
                 </h3>
                 <p className="text-sm text-amber-700 dark:text-amber-300">{lastTranslation.pendingDecision}</p>

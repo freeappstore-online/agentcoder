@@ -88,7 +88,7 @@ export function TerminalView({ output }: TerminalViewProps) {
       <pre
         ref={ref}
         onScroll={handleScroll}
-        className="overflow-auto bg-[var(--bg)] px-4 py-2 text-xs font-mono leading-relaxed text-[var(--ink)] max-h-64"
+        className="overflow-auto bg-[var(--bg)] px-4 py-2 text-sm font-mono leading-relaxed text-[var(--ink)] max-h-64"
       >
         {visible.map((line, i) => (
           <span key={i}>
