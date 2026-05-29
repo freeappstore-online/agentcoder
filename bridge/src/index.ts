@@ -72,6 +72,8 @@ export class Bridge {
 
     this.room.onPeers((peers) => {
       this.events.onPeers?.(peers.map((p) => p.login))
+      // New peer joined — send heartbeat immediately so they see "Bridge online"
+      this.sendHeartbeat()
     })
   }
 

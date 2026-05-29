@@ -222,6 +222,7 @@ var Bridge = class {
     setTimeout(() => this.sendHeartbeat(), 1e3);
     this.room.onPeers((peers) => {
       this.events.onPeers?.(peers.map((p) => p.login));
+      this.sendHeartbeat();
     });
   }
   setWatchList(names) {
