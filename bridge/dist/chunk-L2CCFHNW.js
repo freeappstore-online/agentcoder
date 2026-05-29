@@ -184,8 +184,9 @@ var CHUNK_SIZE = 3500;
 var HEARTBEAT_INTERVAL = 3e4;
 var POLL_INTERVAL = 2e3;
 var Bridge = class {
-  constructor(config) {
+  constructor(config, events = {}) {
     this.config = config;
+    this.events = events;
     this.room = new RoomClient(
       "agentcoder",
       config.sessionId,
@@ -194,57 +195,56 @@ var Bridge = class {
     );
   }
   config;
+  events;
   room;
   outputBuffer = "";
-  // Rolling buffer for catch-up
   maxBufferSize = 5e5;
-  // 500KB
   lastScreens = /* @__PURE__ */ new Map();
   pollTimer = null;
   heartbeatTimer = null;
   startTime = Date.now();
   msgSeq = 0;
   start() {
-    console.log(`[bridge] Starting bridge for session: ${this.config.sessionId}`);
+    this.room.onConnectionState((s) => {
+      if (s === "open") this.events.onConnected?.();
+      else if (s === "closed" || s === "error") this.events.onDisconnected?.();
+    });
     this.room.onMessage((msg) => {
-      this.handleMessage(msg.data);
+      this.handleMessage(msg);
     });
     this.pollTimer = setInterval(() => this.pollSessions(), POLL_INTERVAL);
     this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), HEARTBEAT_INTERVAL);
     setTimeout(() => this.sendHeartbeat(), 1e3);
     this.room.onPeers((peers) => {
-      console.log(`[bridge] Peers: ${peers.map((p) => p.login).join(", ")}`);
+      this.events.onPeers?.(peers.map((p) => p.login));
     });
-    console.log("[bridge] Bridge started. Monitoring tmux sessions...");
   }
   stop() {
     if (this.pollTimer) clearInterval(this.pollTimer);
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.room.close();
-    console.log("[bridge] Bridge stopped.");
   }
   handleMessage(msg) {
-    if (!msg || !msg.type) return;
-    switch (msg.type) {
+    const data = msg.data;
+    if (!data || !data.type) return;
+    switch (data.type) {
       case "command": {
-        console.log(`[bridge] Command for ${msg.agent}: ${msg.text.slice(0, 80)}...`);
-        if (sessionExists(msg.agent)) {
-          const target = getTarget(msg.agent);
-          sendKeys(target, msg.text);
+        this.events.onCommand?.(msg.from.login, data.agent, data.text);
+        if (sessionExists(data.agent)) {
+          const target = getTarget(data.agent);
+          sendKeys(target, data.text);
           sendSpecialKey(target, "Enter");
-        } else {
-          console.warn(`[bridge] Session ${msg.agent} not found`);
         }
         break;
       }
       case "control": {
-        const { agent, action } = msg;
+        const { agent, action } = data;
+        this.events.onControl?.(msg.from.login, action);
         if (!sessionExists(agent)) break;
         const target = getTarget(agent);
         switch (action) {
           case "interrupt":
             sendSpecialKey(target, "C-c");
-            console.log(`[bridge] Sent Ctrl+C to ${agent}`);
             break;
           case "resync": {
             const screen = captureScreen(target);
@@ -253,7 +253,6 @@ var Bridge = class {
           }
           case "stop":
             sendSpecialKey(target, "C-c");
-            console.log(`[bridge] Stopping ${agent}`);
             break;
         }
         break;
@@ -273,6 +272,7 @@ var Bridge = class {
           this.sendOutput(session, screen);
         }
         const state = detectState(screen);
+        this.events.onSessionState?.(session, state);
         this.room.send({
           type: "status",
           agent: session,
@@ -282,6 +282,7 @@ var Bridge = class {
     }
   }
   sendOutput(agent, content) {
+    this.events.onOutput?.(agent, content.length);
     const msgId = String(++this.msgSeq);
     if (content.length <= CHUNK_SIZE) {
       this.room.send({

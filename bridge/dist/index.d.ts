@@ -3,17 +3,21 @@ interface BridgeConfig {
     sessionId: string;
     apiBase?: string;
 }
+interface BridgeEvents {
+    onConnected?: () => void;
+    onDisconnected?: () => void;
+    onPeers?: (peers: string[]) => void;
+    onSessionState?: (agent: string, state: 'ready' | 'busy' | 'waiting') => void;
+    onOutput?: (agent: string, bytes: number) => void;
+    onCommand?: (from: string, agent: string, text: string) => void;
+    onControl?: (from: string, action: string) => void;
+}
 /**
  * AgentCoder Bridge — connects local tmux sessions to a FAS Room.
- *
- * The bridge:
- * 1. Discovers tmux sessions on the machine
- * 2. Connects to a FAS Room as a peer
- * 3. Polls tmux for output changes and sends them to the Room
- * 4. Receives commands from the UI and sends them to tmux
  */
 declare class Bridge {
     private config;
+    private events;
     private room;
     private outputBuffer;
     private maxBufferSize;
@@ -22,7 +26,7 @@ declare class Bridge {
     private heartbeatTimer;
     private startTime;
     private msgSeq;
-    constructor(config: BridgeConfig);
+    constructor(config: BridgeConfig, events?: BridgeEvents);
     start(): void;
     stop(): void;
     private handleMessage;
@@ -32,4 +36,4 @@ declare class Bridge {
     private appendBuffer;
 }
 
-export { Bridge };
+export { Bridge, type BridgeEvents };

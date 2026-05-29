@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Bridge } from './index.js'
+import { Tui } from './tui.js'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -180,20 +181,25 @@ async function main(): Promise<void> {
     // Save for next time
     saveCredentials({ token, sessionId })
 
-    const bridge = new Bridge({ token, sessionId, apiBase })
+    const tui = new Tui(sessionId)
 
-    // Graceful shutdown
-    process.on('SIGINT', () => {
-      console.log('\nShutting down...')
-      bridge.stop()
-      process.exit(0)
-    })
-    process.on('SIGTERM', () => {
-      bridge.stop()
-      process.exit(0)
+    const bridge = new Bridge({ token, sessionId, apiBase }, {
+      onConnected: () => tui.setConnected(true),
+      onDisconnected: () => tui.setConnected(false),
+      onPeers: (peers) => tui.setPeers(peers),
+      onSessionState: (agent, state) => tui.updateSession(agent, state),
+      onOutput: (agent, bytes) => tui.recordOutput(agent, bytes),
+      onCommand: (from, agent, text) => tui.recordCommand(from, agent, text),
+      onControl: (from, action) => tui.recordControl(from, action),
     })
 
     bridge.start()
+
+    const action = await tui.start()
+    tui.stop()
+    bridge.stop()
+
+    if (action === 'quit') process.exit(0)
   } else {
     console.error(`Unknown command: ${command}`)
     printUsage()

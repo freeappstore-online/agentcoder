@@ -15,26 +15,33 @@ type UIMessage =
   | { type: 'command'; agent: string; session: string; text: string }
   | { type: 'control'; action: 'start' | 'stop' | 'interrupt' | 'resync'; agent: string }
 
+export interface BridgeEvents {
+  onConnected?: () => void
+  onDisconnected?: () => void
+  onPeers?: (peers: string[]) => void
+  onSessionState?: (agent: string, state: 'ready' | 'busy' | 'waiting') => void
+  onOutput?: (agent: string, bytes: number) => void
+  onCommand?: (from: string, agent: string, text: string) => void
+  onControl?: (from: string, action: string) => void
+}
+
 /**
  * AgentCoder Bridge — connects local tmux sessions to a FAS Room.
- *
- * The bridge:
- * 1. Discovers tmux sessions on the machine
- * 2. Connects to a FAS Room as a peer
- * 3. Polls tmux for output changes and sends them to the Room
- * 4. Receives commands from the UI and sends them to tmux
  */
 export class Bridge {
   private room: RoomClient
-  private outputBuffer = '' // Rolling buffer for catch-up
-  private maxBufferSize = 500_000 // 500KB
+  private outputBuffer = ''
+  private maxBufferSize = 500_000
   private lastScreens = new Map<string, string>()
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private startTime = Date.now()
   private msgSeq = 0
 
-  constructor(private config: BridgeConfig) {
+  constructor(
+    private config: BridgeConfig,
+    private events: BridgeEvents = {},
+  ) {
     this.room = new RoomClient(
       'agentcoder',
       config.sessionId,
@@ -44,61 +51,53 @@ export class Bridge {
   }
 
   start(): void {
-    console.log(`[bridge] Starting bridge for session: ${this.config.sessionId}`)
-
-    // Listen for UI commands
-    this.room.onMessage<UIMessage>((msg) => {
-      this.handleMessage(msg.data)
+    this.room.onConnectionState((s) => {
+      if (s === 'open') this.events.onConnected?.()
+      else if (s === 'closed' || s === 'error') this.events.onDisconnected?.()
     })
 
-    // Start polling tmux sessions
+    this.room.onMessage<UIMessage>((msg) => {
+      this.handleMessage(msg)
+    })
+
     this.pollTimer = setInterval(() => this.pollSessions(), POLL_INTERVAL)
-
-    // Start heartbeat
     this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), HEARTBEAT_INTERVAL)
-
-    // Initial heartbeat
     setTimeout(() => this.sendHeartbeat(), 1000)
 
-    // Replay buffer on new peer connections
     this.room.onPeers((peers) => {
-      console.log(`[bridge] Peers: ${peers.map((p) => p.login).join(', ')}`)
+      this.events.onPeers?.(peers.map((p) => p.login))
     })
-
-    console.log('[bridge] Bridge started. Monitoring tmux sessions...')
   }
 
   stop(): void {
     if (this.pollTimer) clearInterval(this.pollTimer)
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
     this.room.close()
-    console.log('[bridge] Bridge stopped.')
   }
 
-  private handleMessage(msg: UIMessage): void {
-    if (!msg || !msg.type) return
+  private handleMessage(msg: { from: { login: string }; data: UIMessage }): void {
+    const data = msg.data
+    if (!data || !data.type) return
 
-    switch (msg.type) {
+    switch (data.type) {
       case 'command': {
-        console.log(`[bridge] Command for ${msg.agent}: ${msg.text.slice(0, 80)}...`)
-        if (tmux.sessionExists(msg.agent)) {
-          const target = tmux.getTarget(msg.agent)
-          tmux.sendKeys(target, msg.text)
+        this.events.onCommand?.(msg.from.login, data.agent, data.text)
+        if (tmux.sessionExists(data.agent)) {
+          const target = tmux.getTarget(data.agent)
+          tmux.sendKeys(target, data.text)
           tmux.sendSpecialKey(target, 'Enter')
-        } else {
-          console.warn(`[bridge] Session ${msg.agent} not found`)
         }
         break
       }
 
       case 'control': {
-        const { agent, action } = msg
+        const { agent, action } = data
+        this.events.onControl?.(msg.from.login, action)
         if (!tmux.sessionExists(agent)) break
         const target = tmux.getTarget(agent)
         switch (action) {
           case 'interrupt':
             tmux.sendSpecialKey(target, 'C-c')
-            console.log(`[bridge] Sent Ctrl+C to ${agent}`)
             break
           case 'resync': {
             const screen = tmux.captureScreen(target)
@@ -107,7 +106,6 @@ export class Bridge {
           }
           case 'stop':
             tmux.sendSpecialKey(target, 'C-c')
-            console.log(`[bridge] Stopping ${agent}`)
             break
         }
         break
@@ -126,15 +124,13 @@ export class Bridge {
       if (screen !== lastScreen) {
         this.lastScreens.set(session, screen)
 
-        // Send full screen snapshot (not a diff — tmux capture-pane returns
-        // the visible pane, not a log, so naive slicing produces garbage).
         if (screen.trim()) {
           this.appendBuffer(screen)
           this.sendOutput(session, screen)
         }
 
-        // Send status update
         const state = tmux.detectState(screen)
+        this.events.onSessionState?.(session, state)
         this.room.send({
           type: 'status',
           agent: session,
@@ -145,6 +141,7 @@ export class Bridge {
   }
 
   private sendOutput(agent: string, content: string): void {
+    this.events.onOutput?.(agent, content.length)
     const msgId = String(++this.msgSeq)
     if (content.length <= CHUNK_SIZE) {
       this.room.send({
@@ -155,7 +152,6 @@ export class Bridge {
         seq: 0,
       })
     } else {
-      // Chunk into 3.5KB pieces
       const chunks: string[] = []
       for (let i = 0; i < content.length; i += CHUNK_SIZE) {
         chunks.push(content.slice(i, i + CHUNK_SIZE))
@@ -184,7 +180,6 @@ export class Bridge {
 
   private appendBuffer(content: string): void {
     this.outputBuffer += content
-    // Circular: trim oldest when over limit
     if (this.outputBuffer.length > this.maxBufferSize) {
       this.outputBuffer = this.outputBuffer.slice(-this.maxBufferSize)
     }

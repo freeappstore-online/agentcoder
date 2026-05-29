@@ -1,7 +1,203 @@
 #!/usr/bin/env node
 import {
   Bridge
-} from "./chunk-YULHQWZZ.js";
+} from "./chunk-L2CCFHNW.js";
+
+// src/tui.ts
+import readline from "readline";
+var ESC = "\x1B[";
+var RESET = `${ESC}0m`;
+var BOLD = `${ESC}1m`;
+var DIM = `${ESC}2m`;
+var CYAN = `${ESC}36m`;
+var GREEN = `${ESC}32m`;
+var YELLOW = `${ESC}33m`;
+var RED = `${ESC}31m`;
+var BLUE = `${ESC}34m`;
+var WHITE = `${ESC}37m`;
+var GRAY = `${ESC}90m`;
+var BG_RESET = `${ESC}49m`;
+var CLEAR = `${ESC}2J${ESC}H`;
+var HIDE_CURSOR = `${ESC}?25l`;
+var SHOW_CURSOR = `${ESC}?25h`;
+function c(color, text) {
+  return `${color}${text}${RESET}`;
+}
+var BANNER = [
+  "  \u2554\u2550\u2557\u2554\u2550\u2557\u2554\u2550\u2557\u2554\u2557\u2554\u2554\u2566\u2557  \u2554\u2550\u2557\u2554\u2550\u2557\u2554\u2566\u2557\u2554\u2550\u2557\u2566\u2550\u2557",
+  "  \u2560\u2550\u2563\u2551 \u2566\u2551\u2563 \u2551\u2551\u2551 \u2551   \u2551  \u2551 \u2551 \u2551\u2551\u2551\u2563 \u2560\u2566\u255D",
+  "  \u2569 \u2569\u255A\u2550\u255D\u255A\u2550\u255D\u255D\u255A\u255D \u2569   \u255A\u2550\u255D\u255A\u2550\u255D\u2550\u2569\u255D\u255A\u2550\u255D\u2569\u255A\u2550"
+];
+var MAX_EVENTS = 12;
+var Tui = class {
+  state;
+  renderTimer = null;
+  actionResolve = null;
+  constructor(roomId) {
+    this.state = {
+      connected: false,
+      roomId,
+      peers: [],
+      sessions: /* @__PURE__ */ new Map(),
+      events: [],
+      startTime: Date.now(),
+      totalBytesSent: 0
+    };
+  }
+  setConnected(connected) {
+    this.state.connected = connected;
+    this.render();
+  }
+  setPeers(peers) {
+    this.state.peers = peers;
+    this.render();
+  }
+  updateSession(name, state) {
+    const existing = this.state.sessions.get(name);
+    if (existing) {
+      existing.state = state;
+      existing.lastActivity = Date.now();
+    } else {
+      this.state.sessions.set(name, {
+        name,
+        state,
+        lastActivity: Date.now(),
+        bytesSent: 0
+      });
+    }
+  }
+  recordOutput(agent, bytes) {
+    this.state.totalBytesSent += bytes;
+    const session = this.state.sessions.get(agent);
+    if (session) {
+      session.bytesSent += bytes;
+      session.lastActivity = Date.now();
+    }
+    this.addEvent("\u2192", agent, "output", formatBytes(bytes));
+  }
+  recordCommand(from, agent, text) {
+    this.addEvent("\u2190", from, "command", `"${text.slice(0, 40)}${text.length > 40 ? "..." : ""}"`);
+  }
+  recordControl(from, action) {
+    this.addEvent("\u2190", from, action, "");
+  }
+  addEvent(direction, source, action, detail) {
+    this.state.events.push({ time: Date.now(), direction, source, action, detail });
+    if (this.state.events.length > MAX_EVENTS) {
+      this.state.events = this.state.events.slice(-MAX_EVENTS);
+    }
+  }
+  start() {
+    process.stdout.write(HIDE_CURSOR);
+    this.render();
+    this.renderTimer = setInterval(() => this.render(), 1e3);
+    return new Promise((resolve) => {
+      this.actionResolve = resolve;
+      if (process.stdin.isTTY) {
+        readline.emitKeypressEvents(process.stdin);
+        process.stdin.setRawMode(true);
+        process.stdin.resume();
+        process.stdin.on("keypress", this.onKeypress);
+      }
+    });
+  }
+  stop() {
+    if (this.renderTimer) {
+      clearInterval(this.renderTimer);
+      this.renderTimer = null;
+    }
+    if (process.stdin.isTTY) {
+      process.stdin.off("keypress", this.onKeypress);
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+    }
+    process.stdout.write(SHOW_CURSOR);
+    process.stdout.write(CLEAR);
+  }
+  onKeypress = (_str, key) => {
+    if (key.ctrl && key.name === "c") {
+      this.actionResolve?.("quit");
+      return;
+    }
+    const ch = (key.name || "").toLowerCase();
+    if (ch === "q") this.actionResolve?.("quit");
+  };
+  render() {
+    const { connected, roomId, peers, sessions, events, startTime, totalBytesSent } = this.state;
+    const lines = [];
+    const w = process.stdout.columns || 60;
+    lines.push("");
+    for (const line of BANNER) {
+      lines.push(c(CYAN, line));
+    }
+    lines.push("");
+    const statusDot = connected ? c(GREEN, "\u25CF") : c(RED, "\u25CF");
+    const statusText = connected ? c(GREEN, "Connected") : c(RED, "Disconnected");
+    const uptime = formatUptime(Date.now() - startTime);
+    lines.push(
+      `  ${c(DIM, "Room")}    ${c(WHITE + BOLD, roomId)}    ${statusDot} ${statusText}    ${c(DIM, "Up")} ${c(WHITE, uptime)}`
+    );
+    const peerText = peers.length > 0 ? peers.join(", ") : c(DIM, "none");
+    const sentText = totalBytesSent > 0 ? formatBytes(totalBytesSent) : c(DIM, "0");
+    lines.push(
+      `  ${c(DIM, "Peers")}   ${peerText}    ${c(DIM, "Sent")} ${sentText}`
+    );
+    lines.push("");
+    const sessionList = [...sessions.values()].sort((a, b) => b.lastActivity - a.lastActivity);
+    const hr = c(DIM, "\u2500".repeat(Math.min(w - 4, 56)));
+    lines.push(`  ${c(CYAN + BOLD, "Sessions")} ${c(DIM, `(${sessionList.length})`)}  ${hr.slice(20)}`);
+    if (sessionList.length === 0) {
+      lines.push(`  ${c(DIM, "No tmux sessions detected")}`);
+    } else {
+      for (const s of sessionList.slice(0, 10)) {
+        const dot = s.state === "busy" ? c(BLUE, "\u25CF") : s.state === "ready" ? c(GREEN, "\u25CF") : c(YELLOW, "\u25CB");
+        const stateText = s.state === "busy" ? c(BLUE, "busy") : s.state === "ready" ? c(GREEN, "ready") : c(YELLOW, "waiting");
+        const age = formatAge(Date.now() - s.lastActivity);
+        const name = s.name.length > 20 ? s.name.slice(0, 19) + "\u2026" : s.name.padEnd(20);
+        lines.push(`  ${dot} ${c(WHITE, name)} ${stateText.padEnd(18)} ${c(DIM, age)}`);
+      }
+      if (sessionList.length > 10) {
+        lines.push(`  ${c(DIM, `  +${sessionList.length - 10} more`)}`);
+      }
+    }
+    lines.push("");
+    lines.push(`  ${c(CYAN + BOLD, "Activity")}  ${hr.slice(20)}`);
+    if (events.length === 0) {
+      lines.push(`  ${c(DIM, "Waiting for activity...")}`);
+    } else {
+      for (const e of events.slice(-8)) {
+        const time = new Date(e.time).toLocaleTimeString("en-US", { hour12: false });
+        const dir = e.direction === "\u2192" ? c(GREEN, "\u2192") : c(YELLOW, "\u2190");
+        const src = e.source.length > 16 ? e.source.slice(0, 15) + "\u2026" : e.source.padEnd(16);
+        const act = e.action.padEnd(10);
+        lines.push(`  ${c(DIM, time)}  ${dir} ${c(WHITE, src)} ${c(DIM, act)} ${e.detail}`);
+      }
+    }
+    lines.push("");
+    lines.push(`  ${c(DIM, "q")} ${c(GRAY, "quit")}    ${c(DIM, "Ctrl+C")} ${c(GRAY, "stop")}`);
+    lines.push("");
+    process.stdout.write(CLEAR + lines.join("\n"));
+  }
+};
+function formatUptime(ms) {
+  const s = Math.floor(ms / 1e3);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+function formatAge(ms) {
+  if (ms < 1e3) return "now";
+  const s = Math.floor(ms / 1e3);
+  if (s < 60) return `${s}s ago`;
+  return `${Math.floor(s / 60)}m ago`;
+}
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
 
 // src/cli.ts
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
@@ -152,17 +348,21 @@ async function main() {
       process.exit(1);
     }
     saveCredentials({ token, sessionId });
-    const bridge = new Bridge({ token, sessionId, apiBase });
-    process.on("SIGINT", () => {
-      console.log("\nShutting down...");
-      bridge.stop();
-      process.exit(0);
-    });
-    process.on("SIGTERM", () => {
-      bridge.stop();
-      process.exit(0);
+    const tui = new Tui(sessionId);
+    const bridge = new Bridge({ token, sessionId, apiBase }, {
+      onConnected: () => tui.setConnected(true),
+      onDisconnected: () => tui.setConnected(false),
+      onPeers: (peers) => tui.setPeers(peers),
+      onSessionState: (agent, state) => tui.updateSession(agent, state),
+      onOutput: (agent, bytes) => tui.recordOutput(agent, bytes),
+      onCommand: (from, agent, text) => tui.recordCommand(from, agent, text),
+      onControl: (from, action2) => tui.recordControl(from, action2)
     });
     bridge.start();
+    const action = await tui.start();
+    tui.stop();
+    bridge.stop();
+    if (action === "quit") process.exit(0);
   } else {
     console.error(`Unknown command: ${command}`);
     printUsage();
