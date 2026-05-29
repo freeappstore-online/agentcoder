@@ -150,6 +150,36 @@ function getTarget(sessionName) {
   }
   return sessionName;
 }
+function listWindows(sessionName) {
+  const output = tmux(
+    "list-panes",
+    "-t",
+    sessionName,
+    "-s",
+    "-F",
+    "#{session_name}:#{window_index}.#{pane_index}	#{window_index}	#{window_name}	#{pane_title}"
+  );
+  if (!output.trim()) return [];
+  const seen = /* @__PURE__ */ new Set();
+  const windows = [];
+  for (const line of output.trim().split("\n")) {
+    const [target, idxStr, windowName, paneTitle] = line.split("	");
+    if (!target) continue;
+    const windowIndex = parseInt(idxStr ?? "0", 10);
+    if (seen.has(windowIndex)) continue;
+    seen.add(windowIndex);
+    const lower = `${windowName} ${paneTitle}`.toLowerCase();
+    windows.push({
+      target,
+      sessionName,
+      windowIndex,
+      windowName: windowName ?? "",
+      paneTitle: paneTitle ?? "",
+      isClaude: lower.includes("claude") || lower.includes("\u2733")
+    });
+  }
+  return windows;
+}
 function sessionExists(name) {
   try {
     execFileSync("tmux", ["has-session", "-t", name], { timeout: 3e3, stdio: "pipe" });
@@ -196,7 +226,7 @@ var CHUNK_SIZE = 3500;
 var HEARTBEAT_INTERVAL = 3e4;
 var POLL_INTERVAL = 2e3;
 var Bridge = class {
-  // null = watch nothing until set
+  // session → explicit target
   constructor(config, events = {}) {
     this.config = config;
     this.events = events;
@@ -219,6 +249,8 @@ var Bridge = class {
   startTime = Date.now();
   msgSeq = 0;
   watchSet = null;
+  // null = watch nothing until set
+  targetOverrides = /* @__PURE__ */ new Map();
   start() {
     this.room.onConnectionState((s) => {
       if (s === "open") this.events.onConnected?.();
@@ -236,8 +268,12 @@ var Bridge = class {
       this.replayCurrentScreens();
     });
   }
-  setWatchList(names) {
-    this.watchSet = new Set(names);
+  setWatchList(watched) {
+    this.watchSet = new Set(watched.keys());
+    this.targetOverrides.clear();
+    for (const [name, target] of watched) {
+      if (target) this.targetOverrides.set(name, target);
+    }
   }
   replayCurrentScreens() {
     if (!this.watchSet) return;
@@ -263,7 +299,7 @@ var Bridge = class {
       case "command": {
         this.events.onCommand?.(msg.from.login, data.agent, data.text);
         if (sessionExists(data.agent)) {
-          const target = getTarget(data.agent);
+          const target = this.targetOverrides.get(data.agent) ?? getTarget(data.agent);
           sendKeys(target, data.text);
           sendSpecialKey(target, "Enter");
         }
@@ -273,7 +309,7 @@ var Bridge = class {
         const { agent, action } = data;
         this.events.onControl?.(msg.from.login, action);
         if (!sessionExists(agent)) break;
-        const target = getTarget(agent);
+        const target = this.targetOverrides.get(agent) ?? getTarget(agent);
         switch (action) {
           case "interrupt":
             sendSpecialKey(target, "C-c");
@@ -296,7 +332,7 @@ var Bridge = class {
     this.events.onSessions?.(allSessions);
     const sessions = this.watchSet ? allSessions.filter((s) => this.watchSet.has(s)) : [];
     for (const session of sessions) {
-      const target = getTarget(session);
+      const target = this.targetOverrides.get(session) ?? getTarget(session);
       const screen = captureScreen(target);
       const lastScreen = this.lastScreens.get(session);
       if (screen !== lastScreen) {
@@ -354,5 +390,6 @@ var Bridge = class {
 };
 
 export {
+  listWindows,
   Bridge
 };

@@ -44,6 +44,47 @@ export function getTarget(sessionName: string): string {
   return sessionName
 }
 
+export interface TmuxWindow {
+  target: string       // e.g. "aipa:1.0"
+  sessionName: string  // e.g. "aipa"
+  windowIndex: number
+  windowName: string   // e.g. "shell"
+  paneTitle: string    // e.g. "✳ Claude Code"
+  isClaude: boolean
+}
+
+/** List all windows/panes for a session */
+export function listWindows(sessionName: string): TmuxWindow[] {
+  const output = tmux(
+    'list-panes', '-t', sessionName, '-s',
+    '-F', '#{session_name}:#{window_index}.#{pane_index}\t#{window_index}\t#{window_name}\t#{pane_title}',
+  )
+  if (!output.trim()) return []
+
+  const seen = new Set<number>()
+  const windows: TmuxWindow[] = []
+
+  for (const line of output.trim().split('\n')) {
+    const [target, idxStr, windowName, paneTitle] = line.split('\t')
+    if (!target) continue
+    const windowIndex = parseInt(idxStr ?? '0', 10)
+    // Only show first pane per window
+    if (seen.has(windowIndex)) continue
+    seen.add(windowIndex)
+
+    const lower = `${windowName} ${paneTitle}`.toLowerCase()
+    windows.push({
+      target,
+      sessionName,
+      windowIndex,
+      windowName: windowName ?? '',
+      paneTitle: paneTitle ?? '',
+      isClaude: lower.includes('claude') || lower.includes('✳'),
+    })
+  }
+  return windows
+}
+
 /** Check if a tmux session exists */
 export function sessionExists(name: string): boolean {
   try {

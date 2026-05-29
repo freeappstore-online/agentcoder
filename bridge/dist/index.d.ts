@@ -27,9 +27,10 @@ declare class Bridge {
     private startTime;
     private msgSeq;
     private watchSet;
+    private targetOverrides;
     constructor(config: BridgeConfig, events?: BridgeEvents);
     start(): void;
-    setWatchList(names: string[]): void;
+    setWatchList(watched: Map<string, string | undefined>): void;
     private replayCurrentScreens;
     stop(): void;
     private handleMessage;

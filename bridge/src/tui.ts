@@ -23,6 +23,7 @@ function c(color: string, text: string): string {
 
 export interface TuiSession {
   name: string
+  target?: string // explicit tmux target override (e.g. "aipa:1.0")
   state: 'ready' | 'busy' | 'waiting'
   lastActivity: number
   bytesSent: number
@@ -62,9 +63,11 @@ export class Tui {
   private renderTimer: ReturnType<typeof setInterval> | null = null
   private actionResolve: ((action: TuiAction) => void) | null = null
   private picking = false
+  private expanded: string | null = null  // session name expanded to show windows
   private pickerCursor = 0
-  private pickerSessions: string[] = []
-  private onWatchChanged: ((watched: string[]) => void) | null = null
+  private pickerItems: Array<{ label: string; key: string; indent: boolean; isClaude: boolean }> = []
+  private onWatchChanged: ((watched: Map<string, string | undefined>) => void) | null = null
+  private getWindows: ((session: string) => Array<{ target: string; windowName: string; paneTitle: string; isClaude: boolean }>) | null = null
 
   constructor(roomId: string) {
     this.state = {
@@ -161,6 +164,15 @@ export class Tui {
     this.addEvent('←', from, action, '')
   }
 
+  /** Returns map of session name → explicit target (or undefined for auto-detect) */
+  getWatchedMap(): Map<string, string | undefined> {
+    const map = new Map<string, string | undefined>()
+    for (const s of this.state.sessions.values()) {
+      if (s.watched) map.set(s.name, s.target)
+    }
+    return map
+  }
+
   getWatched(): string[] {
     return [...this.state.sessions.values()].filter((s) => s.watched).map((s) => s.name)
   }
@@ -176,8 +188,12 @@ export class Tui {
     }
   }
 
-  start(onWatchChanged: (watched: string[]) => void): Promise<TuiAction> {
+  start(
+    onWatchChanged: (watched: Map<string, string | undefined>) => void,
+    getWindows?: (session: string) => Array<{ target: string; windowName: string; paneTitle: string; isClaude: boolean }>,
+  ): Promise<TuiAction> {
     this.onWatchChanged = onWatchChanged
+    this.getWindows = getWindows ?? null
     process.stdout.write(HIDE_CURSOR)
 
     // If nothing is watched, open picker immediately
@@ -217,14 +233,34 @@ export class Tui {
   private openPicker(): void {
     this.picking = true
     this.pickerCursor = 0
-    this.pickerSessions = [...this.state.sessions.keys()].sort()
+    this.expanded = null
+    this.rebuildPickerItems()
     this.render()
+  }
+
+  private rebuildPickerItems(): void {
+    this.pickerItems = []
+    const sessions = [...this.state.sessions.keys()].sort()
+    for (const name of sessions) {
+      this.pickerItems.push({ label: name, key: name, indent: false, isClaude: false })
+      if (this.expanded === name && this.getWindows) {
+        const windows = this.getWindows(name)
+        for (const w of windows) {
+          const label = `${w.windowName}${w.paneTitle && w.paneTitle !== w.windowName ? ` (${w.paneTitle})` : ''}`
+          this.pickerItems.push({ label, key: `${name}=${w.target}`, indent: true, isClaude: w.isClaude })
+        }
+      }
+    }
+    // Clamp cursor
+    if (this.pickerCursor >= this.pickerItems.length) {
+      this.pickerCursor = Math.max(0, this.pickerItems.length - 1)
+    }
   }
 
   private closePicker(): void {
     this.picking = false
-    const watched = this.getWatched()
-    this.onWatchChanged?.(watched)
+    this.expanded = null
+    this.onWatchChanged?.(this.getWatchedMap())
     this.render()
   }
 
@@ -246,28 +282,53 @@ export class Tui {
 
   private handlePickerKey(key: readline.Key): void {
     const ch = (key.name || '').toLowerCase()
-    const total = this.pickerSessions.length
+    const total = this.pickerItems.length
     if (total === 0) return
 
     if (ch === 'up' || ch === 'k') {
       this.pickerCursor = (this.pickerCursor - 1 + total) % total
     } else if (ch === 'down' || ch === 'j') {
       this.pickerCursor = (this.pickerCursor + 1) % total
+    } else if (ch === 'right') {
+      // Expand session to show windows
+      const item = this.pickerItems[this.pickerCursor]
+      if (item && !item.indent) {
+        this.expanded = this.expanded === item.key ? null : item.key
+        this.rebuildPickerItems()
+      }
+    } else if (ch === 'left') {
+      // Collapse
+      if (this.expanded) {
+        this.expanded = null
+        this.rebuildPickerItems()
+      }
     } else if (ch === 'space') {
-      const name = this.pickerSessions[this.pickerCursor]!
-      const session = this.state.sessions.get(name)
-      if (session) session.watched = !session.watched
+      const item = this.pickerItems[this.pickerCursor]
+      if (!item) return
+      if (item.indent) {
+        // Window item — set explicit target on the session
+        const [sessionName, target] = item.key.split('=')
+        const session = this.state.sessions.get(sessionName!)
+        if (session) {
+          session.watched = true
+          session.target = target
+        }
+      } else {
+        // Session item — toggle watch (auto-detect pane)
+        const session = this.state.sessions.get(item.key)
+        if (session) {
+          session.watched = !session.watched
+          if (!session.watched) session.target = undefined
+        }
+      }
     } else if (ch === 'return') {
       this.closePicker()
       return
     } else if (ch === 'a') {
-      // Toggle all
-      const allWatched = this.pickerSessions.every(
-        (n) => this.state.sessions.get(n)?.watched,
-      )
-      for (const n of this.pickerSessions) {
-        const s = this.state.sessions.get(n)
-        if (s) s.watched = !allWatched
+      const allWatched = [...this.state.sessions.values()].every((s) => s.watched)
+      for (const s of this.state.sessions.values()) {
+        s.watched = !allWatched
+        if (!s.watched) s.target = undefined
       }
     } else if (ch === 'escape') {
       this.closePicker()
@@ -295,23 +356,35 @@ export class Tui {
     lines.push(`  ${c(WHITE + BOLD, 'Select sessions to monitor')}`)
     lines.push('')
 
-    for (let i = 0; i < this.pickerSessions.length; i++) {
-      const name = this.pickerSessions[i]!
-      const session = this.state.sessions.get(name)!
-      const isSelected = i === this.pickerCursor
-      const check = session.watched ? c(GREEN, '◉') : c(DIM, '○')
-      const label = isSelected
-        ? c(INVERSE + WHITE, ` ${name} `)
-        : c(WHITE, ` ${name}`)
-      const stateLabel = session.state === 'busy' ? c(BLUE, 'busy')
-        : session.state === 'ready' ? c(GREEN, 'ready')
-        : c(DIM, 'idle')
-      lines.push(`  ${check} ${label}  ${stateLabel}`)
+    for (let i = 0; i < this.pickerItems.length; i++) {
+      const item = this.pickerItems[i]!
+      const isCursor = i === this.pickerCursor
+
+      if (item.indent) {
+        // Window sub-item
+        const prefix = '    '
+        const marker = item.isClaude ? c(GREEN, '✳') : c(DIM, '·')
+        const label = isCursor
+          ? c(INVERSE + WHITE, ` ${item.label} `)
+          : c(GRAY, ` ${item.label}`)
+        lines.push(`${prefix}${marker} ${label}`)
+      } else {
+        // Session item
+        const session = this.state.sessions.get(item.key)!
+        const check = session.watched ? c(GREEN, '◉') : c(DIM, '○')
+        const arrow = this.expanded === item.key ? c(DIM, '▼') : c(DIM, '▸')
+        const label = isCursor
+          ? c(INVERSE + WHITE, ` ${item.label} `)
+          : c(WHITE, ` ${item.label}`)
+        const targetHint = session.target ? c(DIM, ` → ${session.target}`) : ''
+        lines.push(`  ${check} ${arrow}${label}${targetHint}`)
+      }
     }
 
     lines.push('')
     lines.push(
       `  ${c(DIM, '↑↓')} ${c(GRAY, 'navigate')}    ` +
+      `${c(DIM, '→')} ${c(GRAY, 'expand')}    ` +
       `${c(DIM, 'space')} ${c(GRAY, 'toggle')}    ` +
       `${c(DIM, 'a')} ${c(GRAY, 'all')}    ` +
       `${c(DIM, 'enter')} ${c(GRAY, 'confirm')}`,

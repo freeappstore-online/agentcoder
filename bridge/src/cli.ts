@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Bridge } from './index.js'
 import { Tui } from './tui.js'
+import * as tmux from './tmux.js'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -204,7 +205,10 @@ async function main(): Promise<void> {
 
     bridge.start()
 
-    const action = await tui.start((watched) => bridge.setWatchList(watched))
+    const action = await tui.start(
+      (watched) => bridge.setWatchList(watched),
+      (session) => tmux.listWindows(session),
+    )
     tui.stop()
     bridge.stop()
 

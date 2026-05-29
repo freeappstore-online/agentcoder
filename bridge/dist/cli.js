@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import {
-  Bridge
-} from "./chunk-NQCOW6MU.js";
+  Bridge,
+  listWindows
+} from "./chunk-PYHJA76E.js";
 
 // src/tui.ts
 import readline from "readline";
@@ -34,9 +35,12 @@ var Tui = class {
   renderTimer = null;
   actionResolve = null;
   picking = false;
+  expanded = null;
+  // session name expanded to show windows
   pickerCursor = 0;
-  pickerSessions = [];
+  pickerItems = [];
   onWatchChanged = null;
+  getWindows = null;
   constructor(roomId) {
     this.state = {
       connected: false,
@@ -122,6 +126,14 @@ var Tui = class {
   recordControl(from, action) {
     this.addEvent("\u2190", from, action, "");
   }
+  /** Returns map of session name → explicit target (or undefined for auto-detect) */
+  getWatchedMap() {
+    const map = /* @__PURE__ */ new Map();
+    for (const s of this.state.sessions.values()) {
+      if (s.watched) map.set(s.name, s.target);
+    }
+    return map;
+  }
   getWatched() {
     return [...this.state.sessions.values()].filter((s) => s.watched).map((s) => s.name);
   }
@@ -134,8 +146,9 @@ var Tui = class {
       this.state.events = this.state.events.slice(-MAX_EVENTS);
     }
   }
-  start(onWatchChanged) {
+  start(onWatchChanged, getWindows) {
     this.onWatchChanged = onWatchChanged;
+    this.getWindows = getWindows ?? null;
     process.stdout.write(HIDE_CURSOR);
     if (!this.hasAnyWatched() && this.state.sessions.size > 0) {
       this.openPicker();
@@ -168,13 +181,31 @@ var Tui = class {
   openPicker() {
     this.picking = true;
     this.pickerCursor = 0;
-    this.pickerSessions = [...this.state.sessions.keys()].sort();
+    this.expanded = null;
+    this.rebuildPickerItems();
     this.render();
+  }
+  rebuildPickerItems() {
+    this.pickerItems = [];
+    const sessions = [...this.state.sessions.keys()].sort();
+    for (const name of sessions) {
+      this.pickerItems.push({ label: name, key: name, indent: false, isClaude: false });
+      if (this.expanded === name && this.getWindows) {
+        const windows = this.getWindows(name);
+        for (const w of windows) {
+          const label = `${w.windowName}${w.paneTitle && w.paneTitle !== w.windowName ? ` (${w.paneTitle})` : ""}`;
+          this.pickerItems.push({ label, key: `${name}=${w.target}`, indent: true, isClaude: w.isClaude });
+        }
+      }
+    }
+    if (this.pickerCursor >= this.pickerItems.length) {
+      this.pickerCursor = Math.max(0, this.pickerItems.length - 1);
+    }
   }
   closePicker() {
     this.picking = false;
-    const watched = this.getWatched();
-    this.onWatchChanged?.(watched);
+    this.expanded = null;
+    this.onWatchChanged?.(this.getWatchedMap());
     this.render();
   }
   onKeypress = (_str, key) => {
@@ -192,26 +223,48 @@ var Tui = class {
   };
   handlePickerKey(key) {
     const ch = (key.name || "").toLowerCase();
-    const total = this.pickerSessions.length;
+    const total = this.pickerItems.length;
     if (total === 0) return;
     if (ch === "up" || ch === "k") {
       this.pickerCursor = (this.pickerCursor - 1 + total) % total;
     } else if (ch === "down" || ch === "j") {
       this.pickerCursor = (this.pickerCursor + 1) % total;
+    } else if (ch === "right") {
+      const item = this.pickerItems[this.pickerCursor];
+      if (item && !item.indent) {
+        this.expanded = this.expanded === item.key ? null : item.key;
+        this.rebuildPickerItems();
+      }
+    } else if (ch === "left") {
+      if (this.expanded) {
+        this.expanded = null;
+        this.rebuildPickerItems();
+      }
     } else if (ch === "space") {
-      const name = this.pickerSessions[this.pickerCursor];
-      const session = this.state.sessions.get(name);
-      if (session) session.watched = !session.watched;
+      const item = this.pickerItems[this.pickerCursor];
+      if (!item) return;
+      if (item.indent) {
+        const [sessionName, target] = item.key.split("=");
+        const session = this.state.sessions.get(sessionName);
+        if (session) {
+          session.watched = true;
+          session.target = target;
+        }
+      } else {
+        const session = this.state.sessions.get(item.key);
+        if (session) {
+          session.watched = !session.watched;
+          if (!session.watched) session.target = void 0;
+        }
+      }
     } else if (ch === "return") {
       this.closePicker();
       return;
     } else if (ch === "a") {
-      const allWatched = this.pickerSessions.every(
-        (n) => this.state.sessions.get(n)?.watched
-      );
-      for (const n of this.pickerSessions) {
-        const s = this.state.sessions.get(n);
-        if (s) s.watched = !allWatched;
+      const allWatched = [...this.state.sessions.values()].every((s) => s.watched);
+      for (const s of this.state.sessions.values()) {
+        s.watched = !allWatched;
+        if (!s.watched) s.target = void 0;
       }
     } else if (ch === "escape") {
       this.closePicker();
@@ -235,18 +288,26 @@ var Tui = class {
     lines.push("");
     lines.push(`  ${c(WHITE + BOLD, "Select sessions to monitor")}`);
     lines.push("");
-    for (let i = 0; i < this.pickerSessions.length; i++) {
-      const name = this.pickerSessions[i];
-      const session = this.state.sessions.get(name);
-      const isSelected = i === this.pickerCursor;
-      const check = session.watched ? c(GREEN, "\u25C9") : c(DIM, "\u25CB");
-      const label = isSelected ? c(INVERSE + WHITE, ` ${name} `) : c(WHITE, ` ${name}`);
-      const stateLabel = session.state === "busy" ? c(BLUE, "busy") : session.state === "ready" ? c(GREEN, "ready") : c(DIM, "idle");
-      lines.push(`  ${check} ${label}  ${stateLabel}`);
+    for (let i = 0; i < this.pickerItems.length; i++) {
+      const item = this.pickerItems[i];
+      const isCursor = i === this.pickerCursor;
+      if (item.indent) {
+        const prefix = "    ";
+        const marker = item.isClaude ? c(GREEN, "\u2733") : c(DIM, "\xB7");
+        const label = isCursor ? c(INVERSE + WHITE, ` ${item.label} `) : c(GRAY, ` ${item.label}`);
+        lines.push(`${prefix}${marker} ${label}`);
+      } else {
+        const session = this.state.sessions.get(item.key);
+        const check = session.watched ? c(GREEN, "\u25C9") : c(DIM, "\u25CB");
+        const arrow = this.expanded === item.key ? c(DIM, "\u25BC") : c(DIM, "\u25B8");
+        const label = isCursor ? c(INVERSE + WHITE, ` ${item.label} `) : c(WHITE, ` ${item.label}`);
+        const targetHint = session.target ? c(DIM, ` \u2192 ${session.target}`) : "";
+        lines.push(`  ${check} ${arrow}${label}${targetHint}`);
+      }
     }
     lines.push("");
     lines.push(
-      `  ${c(DIM, "\u2191\u2193")} ${c(GRAY, "navigate")}    ${c(DIM, "space")} ${c(GRAY, "toggle")}    ${c(DIM, "a")} ${c(GRAY, "all")}    ${c(DIM, "enter")} ${c(GRAY, "confirm")}`
+      `  ${c(DIM, "\u2191\u2193")} ${c(GRAY, "navigate")}    ${c(DIM, "\u2192")} ${c(GRAY, "expand")}    ${c(DIM, "space")} ${c(GRAY, "toggle")}    ${c(DIM, "a")} ${c(GRAY, "all")}    ${c(DIM, "enter")} ${c(GRAY, "confirm")}`
     );
     lines.push("");
     process.stdout.write(CLEAR + lines.join("\n"));
@@ -497,7 +558,10 @@ async function main() {
       onControl: (from, action2) => tui.recordControl(from, action2)
     });
     bridge.start();
-    const action = await tui.start((watched) => bridge.setWatchList(watched));
+    const action = await tui.start(
+      (watched) => bridge.setWatchList(watched),
+      (session) => listWindows(session)
+    );
     tui.stop();
     bridge.stop();
     if (action === "quit") process.exit(0);

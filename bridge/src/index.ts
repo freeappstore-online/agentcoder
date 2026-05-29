@@ -38,6 +38,7 @@ export class Bridge {
   private startTime = Date.now()
   private msgSeq = 0
   private watchSet: Set<string> | null = null // null = watch nothing until set
+  private targetOverrides = new Map<string, string>() // session → explicit target
 
   constructor(
     private config: BridgeConfig,
@@ -76,8 +77,12 @@ export class Bridge {
     })
   }
 
-  setWatchList(names: string[]): void {
-    this.watchSet = new Set(names)
+  setWatchList(watched: Map<string, string | undefined>): void {
+    this.watchSet = new Set(watched.keys())
+    this.targetOverrides.clear()
+    for (const [name, target] of watched) {
+      if (target) this.targetOverrides.set(name, target)
+    }
   }
 
   private replayCurrentScreens(): void {
@@ -107,7 +112,7 @@ export class Bridge {
       case 'command': {
         this.events.onCommand?.(msg.from.login, data.agent, data.text)
         if (tmux.sessionExists(data.agent)) {
-          const target = tmux.getTarget(data.agent)
+          const target = this.targetOverrides.get(data.agent) ?? tmux.getTarget(data.agent)
           tmux.sendKeys(target, data.text)
           tmux.sendSpecialKey(target, 'Enter')
         }
@@ -118,7 +123,7 @@ export class Bridge {
         const { agent, action } = data
         this.events.onControl?.(msg.from.login, action)
         if (!tmux.sessionExists(agent)) break
-        const target = tmux.getTarget(agent)
+        const target = this.targetOverrides.get(agent) ?? tmux.getTarget(agent)
         switch (action) {
           case 'interrupt':
             tmux.sendSpecialKey(target, 'C-c')
@@ -147,7 +152,7 @@ export class Bridge {
       : []
 
     for (const session of sessions) {
-      const target = tmux.getTarget(session)
+      const target = this.targetOverrides.get(session) ?? tmux.getTarget(session)
       const screen = tmux.captureScreen(target)
       const lastScreen = this.lastScreens.get(session)
 
