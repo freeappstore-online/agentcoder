@@ -136,7 +136,7 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
 
   // Check if user has an API key for translation (re-check on window focus for after key setup)
   useEffect(() => {
-    const check = () => fas.keys.has('anthropic').then((has) => setNeedsKey(!has))
+    const check = () => fas.keys.has('anthropic').then((has) => setNeedsKey(!has)).catch(() => setNeedsKey(true))
     check()
     window.addEventListener('focus', check)
     return () => window.removeEventListener('focus', check)
