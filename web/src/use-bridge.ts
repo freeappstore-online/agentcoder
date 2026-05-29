@@ -109,9 +109,5 @@ export function useBridge(room: Room | null) {
     [room],
   )
 
-  const clearBuffer = useCallback(() => {
-    setState((prev) => ({ ...prev, outputBuffer: '' }))
-  }, [])
-
-  return { ...state, send, clearBuffer }
+  return { ...state, send }
 }
