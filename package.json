@@ -3,14 +3,18 @@
   "private": true,
   "packageManager": "pnpm@10.30.3",
   "engines": { "node": ">=22" },
+  "bin": {
+    "agentcoder": "./bin/agentcoder.js"
+  },
   "pnpm": { "onlyBuiltDependencies": ["esbuild"] },
   "repository": { "type": "git", "url": "git+https://github.com/freeappstore-online/agentcoder.git" },
   "scripts": {
     "dev": "pnpm --filter @agentcoder/web dev",
     "build": "pnpm --filter @agentcoder/web build",
-    "build:bridge": "pnpm --filter @agentcoder/bridge build",
+    "build:bridge": "pnpm --filter agentcoder-bridge build",
     "preview": "pnpm --filter @agentcoder/web preview",
     "typecheck": "pnpm --filter @agentcoder/web exec tsc -b",
-    "test": "pnpm --filter @agentcoder/web exec tsc -b"
+    "test": "pnpm --filter @agentcoder/web exec tsc -b",
+    "postinstall": "cd bridge && npm run build"
   }
 }

@@ -1,15 +1,17 @@
 {
-  "name": "@agentcoder/bridge",
+  "name": "agentcoder-bridge",
   "version": "0.1.0",
-  "description": "Local bridge for AgentCoder — relays tmux sessions to the web UI",
+  "description": "AgentCoder — control AI coding agents from any device",
   "license": "MIT",
   "type": "module",
   "bin": {
     "agentcoder": "./dist/cli.js"
   },
   "main": "./dist/index.js",
+  "files": ["dist"],
   "scripts": {
     "build": "tsup src/cli.ts src/index.ts --format esm --dts --clean",
+    "prepublishOnly": "tsup src/cli.ts src/index.ts --format esm --dts --clean",
     "dev": "tsx src/cli.ts"
   },
   "dependencies": {

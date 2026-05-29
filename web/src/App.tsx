@@ -60,8 +60,7 @@ function ConnectBridge({ onRoom }: { onRoom: (room: Room) => void }) {
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-[var(--ink)]">Setup your bridge</h3>
             <div className="space-y-2 text-xs text-[var(--muted)] font-mono bg-[var(--bg)] rounded-lg p-3">
-              <p>npm install -g @agentcoder/bridge</p>
-              <p>agentcoder start --session {sessionId} --token YOUR_TOKEN</p>
+              <p>npx github:freeappstore-online/agentcoder start --session {sessionId} --token YOUR_TOKEN</p>
             </div>
             <p className="text-xs text-[var(--muted)]">
               The bridge runs on your machine and relays tmux sessions through this app.
