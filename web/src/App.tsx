@@ -6,6 +6,7 @@ import { useAuth, useVoiceInput } from '@freeappstore/sdk/hooks'
 import { useBridge } from './use-bridge'
 import { useTranslator } from './use-translator'
 import type { Room } from '@freeappstore/sdk'
+import { TerminalView } from './terminal-view'
 import type { AgentState, UIMessage } from './types'
 
 const fas = initApp({ appId: 'agentcoder' })
@@ -287,6 +288,9 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
           </div>
         )}
       </div>
+
+      {/* Raw terminal output */}
+      <TerminalView output={outputBuffer} />
 
       {/* Compose bar */}
       <div className="border-t border-[var(--border)] p-3">
