@@ -94,7 +94,9 @@ function login() {
     server.listen(CLI_AUTH_PORT, "127.0.0.1", () => {
       const authUrl = `${APP_URL}?cli_auth=1&port=${CLI_AUTH_PORT}`;
       console.log("Opening browser for sign-in...");
-      console.log(`If the browser doesn't open, visit: ${authUrl}`);
+      console.log(`If the browser doesn't open, visit:
+  ${authUrl}`);
+      console.log("Waiting for sign-in...");
       openBrowser(authUrl);
     });
     server.on("error", (err) => {
@@ -102,8 +104,8 @@ function login() {
     });
     setTimeout(() => {
       server.close();
-      reject(new Error("Login timed out (2 minutes). Try again."));
-    }, 12e4);
+      reject(new Error("Login timed out (5 minutes). Try again."));
+    }, 3e5);
   });
 }
 async function main() {

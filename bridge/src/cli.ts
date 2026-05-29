@@ -107,7 +107,8 @@ function login(): Promise<string> {
     server.listen(CLI_AUTH_PORT, '127.0.0.1', () => {
       const authUrl = `${APP_URL}?cli_auth=1&port=${CLI_AUTH_PORT}`
       console.log('Opening browser for sign-in...')
-      console.log(`If the browser doesn't open, visit: ${authUrl}`)
+      console.log(`If the browser doesn't open, visit:\n  ${authUrl}`)
+      console.log('Waiting for sign-in...')
       openBrowser(authUrl)
     })
 
@@ -115,11 +116,11 @@ function login(): Promise<string> {
       reject(new Error(`Could not start auth server on port ${CLI_AUTH_PORT}: ${err.message}`))
     })
 
-    // Timeout after 2 minutes
+    // Timeout after 5 minutes
     setTimeout(() => {
       server.close()
-      reject(new Error('Login timed out (2 minutes). Try again.'))
-    }, 120_000)
+      reject(new Error('Login timed out (5 minutes). Try again.'))
+    }, 300_000)
   })
 }
 
