@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import {
   Bridge
-} from "./chunk-NZPSG6EB.js";
+} from "./chunk-KPLIIULX.js";
 
 // src/cli.ts
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";

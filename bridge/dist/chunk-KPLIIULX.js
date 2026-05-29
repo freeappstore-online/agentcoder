@@ -136,7 +136,7 @@ function tmux(...args) {
 }
 function sessionExists(name) {
   try {
-    execFileSync("tmux", ["has-session", "-t", name], { timeout: 3e3 });
+    execFileSync("tmux", ["has-session", "-t", name], { timeout: 3e3, stdio: "pipe" });
     return true;
   } catch {
     return false;
@@ -157,14 +157,17 @@ function sendSpecialKey(target, key) {
   tmux("send-keys", "-t", target, key);
 }
 function isClaudeReady(screen) {
-  const lines = screen.split("\n").filter((l) => l.trim());
-  if (lines.length === 0) return false;
-  const last = lines[lines.length - 1].trim();
-  return last.includes("\u276F");
+  if (screen.includes("ctrl+c to interrupt")) return false;
+  const lines = screen.split("\n").slice(-15);
+  const tail = lines.join("\n");
+  if (tail.includes("bypass permissions") || tail.includes("? for shortcuts") || /❯\s*$/.test(tail) || /❯ .*↵ send/.test(tail)) {
+    return true;
+  }
+  return false;
 }
 function isClaudeProcessing(screen) {
-  const lower = screen.toLowerCase();
-  return lower.includes("ctrl+c to interrupt") || lower.includes("thinking") || lower.includes("writing") || lower.includes("reading") || lower.includes("editing");
+  if (screen.includes("ctrl+c to interrupt")) return true;
+  return /Working|Thinking|Reading|Searching|Running|Editing|Writing/.test(screen);
 }
 function detectState(screen) {
   if (isClaudeProcessing(screen)) return "busy";
