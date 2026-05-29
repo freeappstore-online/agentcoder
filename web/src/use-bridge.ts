@@ -57,11 +57,23 @@ export function useBridge(room: Room | null) {
           // Reassemble chunked messages, then replace per-agent screen
           const applyScreen = (screen: string, agent: string) => {
             setState((prev) => {
-              // Replace the last screen for this agent (bridge sends full snapshots, not diffs)
+              // Replace this agent's section. Each agent gets a marker block:
+              //   \n--- agent ---\n<content>
+              // Find this agent's block and replace just its content,
+              // preserving other agents' blocks.
               const marker = `\n--- ${agent} ---\n`
-              const idx = prev.outputBuffer.lastIndexOf(marker)
-              const before = idx >= 0 ? prev.outputBuffer.slice(0, idx) : prev.outputBuffer
-              let buf = before + marker + screen
+              const idx = prev.outputBuffer.indexOf(marker)
+              let buf: string
+              if (idx >= 0) {
+                // Find the end of this agent's block (next marker or end of string)
+                const afterMarker = idx + marker.length
+                const nextMarker = prev.outputBuffer.indexOf('\n--- ', afterMarker)
+                const before = prev.outputBuffer.slice(0, idx)
+                const after = nextMarker >= 0 ? prev.outputBuffer.slice(nextMarker) : ''
+                buf = before + marker + screen + after
+              } else {
+                buf = prev.outputBuffer + marker + screen
+              }
               if (buf.length > MAX_BUFFER_SIZE) buf = buf.slice(-MAX_BUFFER_SIZE)
               return { ...prev, outputBuffer: buf }
             })

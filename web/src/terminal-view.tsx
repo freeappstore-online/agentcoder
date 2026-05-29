@@ -28,12 +28,12 @@ function highlightLine(line: string): React.ReactNode {
   if (/^∴\s*Thinking/.test(line)) {
     return <span className="text-purple-400 italic">{line}</span>
   }
-  // Diff: added
-  if (/^\s*\+\s/.test(line)) {
+  // Diff: added (lines starting with + but not tmux window list like "+ 1: shell")
+  if (/^\+[^+\d]/.test(line.trim())) {
     return <span className="text-emerald-400">{line}</span>
   }
-  // Diff: removed
-  if (/^\s*-\s/.test(line)) {
+  // Diff: removed (lines starting with - but not tmux separators)
+  if (/^-[^-]/.test(line.trim())) {
     return <span className="text-red-400">{line}</span>
   }
   // Status lines ❯ ✻ ⏵

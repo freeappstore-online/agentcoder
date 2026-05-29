@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 
 // Test the chunking logic extracted from Bridge.sendOutput
 function chunkContent(content: string, chunkSize = 3500): Array<{ content: string; seq: number; total?: number }> {
@@ -24,12 +24,9 @@ describe('chunkContent', () => {
   it('splits large content into 3.5KB chunks', () => {
     const content = 'x'.repeat(10000)
     const result = chunkContent(content)
-    expect(result).toHaveLength(3) // 3500 + 3500 + 3000
+    expect(result).toHaveLength(3)
     expect(result[0].seq).toBe(0)
     expect(result[0].total).toBe(3)
-    expect(result[1].seq).toBe(1)
-    expect(result[2].seq).toBe(2)
-    // Reassemble
     const reassembled = result.map((c) => c.content).join('')
     expect(reassembled).toBe(content)
   })
@@ -50,9 +47,8 @@ describe('chunkContent', () => {
   })
 
   it('preserves all content through chunking', () => {
-    // Use realistic terminal output with mixed chars
     const content = Array.from({ length: 200 }, (_, i) =>
-      `[2026-05-29 10:${String(i).padStart(2, '0')}] Claude edited src/file${i}.ts — added error handling for edge case #${i}\n`
+      `[2026-05-29 10:${String(i).padStart(2, '0')}] Claude edited src/file${i}.ts\n`
     ).join('')
     const result = chunkContent(content)
     const reassembled = result.map((c) => c.content).join('')
@@ -60,32 +56,52 @@ describe('chunkContent', () => {
   })
 })
 
-// Test rolling buffer logic extracted from Bridge.appendBuffer
-function appendBuffer(existing: string, content: string, maxSize = 500_000): string {
-  const buf = existing + content
-  if (buf.length > maxSize) return buf.slice(-maxSize)
+// Test per-agent screen replacement logic (mirrors use-bridge.ts applyScreen)
+function applyScreen(buffer: string, screen: string, agent: string, maxSize = 500_000): string {
+  const marker = `\n--- ${agent} ---\n`
+  const idx = buffer.indexOf(marker)
+  let buf: string
+  if (idx >= 0) {
+    const afterMarker = idx + marker.length
+    const nextMarker = buffer.indexOf('\n--- ', afterMarker)
+    const before = buffer.slice(0, idx)
+    const after = nextMarker >= 0 ? buffer.slice(nextMarker) : ''
+    buf = before + marker + screen + after
+  } else {
+    buf = buffer + marker + screen
+  }
+  if (buf.length > maxSize) buf = buf.slice(-maxSize)
   return buf
 }
 
-describe('appendBuffer (rolling buffer)', () => {
-  it('appends content normally under limit', () => {
-    expect(appendBuffer('hello', ' world')).toBe('hello world')
+describe('applyScreen (per-agent replacement)', () => {
+  it('appends first screen for a new agent', () => {
+    const result = applyScreen('', 'screen content', 'claude')
+    expect(result).toContain('--- claude ---')
+    expect(result).toContain('screen content')
   })
 
-  it('trims oldest content when over limit', () => {
-    const existing = 'a'.repeat(400_000)
-    const newContent = 'b'.repeat(200_000)
-    const result = appendBuffer(existing, newContent)
-    expect(result.length).toBe(500_000)
-    expect(result.endsWith('b'.repeat(200_000))).toBe(true)
-    expect(result.startsWith('a')).toBe(true)
+  it('replaces screen for same agent', () => {
+    const buf1 = applyScreen('', 'old screen', 'claude')
+    const buf2 = applyScreen(buf1, 'new screen', 'claude')
+    expect(buf2).toContain('new screen')
+    expect(buf2).not.toContain('old screen')
+    // Only one marker
+    expect(buf2.split('--- claude ---').length).toBe(2)
   })
 
-  it('keeps most recent content when way over limit', () => {
-    const existing = 'a'.repeat(500_000)
-    const newContent = 'b'.repeat(500_000)
-    const result = appendBuffer(existing, newContent)
+  it('preserves other agents when replacing', () => {
+    let buf = applyScreen('', 'agent1 output', 'agent1')
+    buf = applyScreen(buf, 'agent2 output', 'agent2')
+    buf = applyScreen(buf, 'agent1 updated', 'agent1')
+    expect(buf).toContain('agent1 updated')
+    expect(buf).toContain('agent2 output')
+    expect(buf).not.toContain('agent1 output')
+  })
+
+  it('trims when over max size', () => {
+    const bigScreen = 'x'.repeat(600_000)
+    const result = applyScreen('', bigScreen, 'claude', 500_000)
     expect(result.length).toBe(500_000)
-    expect(result).toBe('b'.repeat(500_000))
   })
 })

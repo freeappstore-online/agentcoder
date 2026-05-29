@@ -109,6 +109,8 @@ export class Tui {
     this.render()
   }
 
+  private started = false
+
   /** Register all discovered sessions (from tmux.listSessions) */
   discoverSessions(names: string[]): void {
     let added = false
@@ -124,8 +126,8 @@ export class Tui {
         added = true
       }
     }
-    // Auto-open picker on first discovery if nothing is watched
-    if (added && !this.hasAnyWatched() && !this.picking) {
+    // Auto-open picker on first discovery if nothing is watched (only after start)
+    if (added && this.started && !this.hasAnyWatched() && !this.picking) {
       this.openPicker()
     }
   }
@@ -196,7 +198,17 @@ export class Tui {
     this.getWindows = getWindows ?? null
     process.stdout.write(HIDE_CURSOR)
 
-    // If nothing is watched, open picker immediately
+    // Set up raw mode BEFORE opening picker
+    if (process.stdin.isTTY) {
+      readline.emitKeypressEvents(process.stdin)
+      process.stdin.setRawMode(true)
+      process.stdin.resume()
+      process.stdin.on('keypress', this.onKeypress)
+    }
+
+    this.started = true
+
+    // Open picker if nothing is watched and sessions exist
     if (!this.hasAnyWatched() && this.state.sessions.size > 0) {
       this.openPicker()
     }
@@ -206,13 +218,6 @@ export class Tui {
 
     return new Promise((resolve) => {
       this.actionResolve = resolve
-
-      if (process.stdin.isTTY) {
-        readline.emitKeypressEvents(process.stdin)
-        process.stdin.setRawMode(true)
-        process.stdin.resume()
-        process.stdin.on('keypress', this.onKeypress)
-      }
     })
   }
 
