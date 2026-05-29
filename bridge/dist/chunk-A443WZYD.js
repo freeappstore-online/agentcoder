@@ -73,7 +73,6 @@ var RoomClient = class {
     socket.on("open", () => {
       this.reconnectAttempt = 0;
       this.setState("open");
-      console.log(`[bridge] Connected to room ${this.roomId}`);
     });
     socket.on("message", (raw) => {
       try {
@@ -86,7 +85,6 @@ var RoomClient = class {
           this._peers = parsed.peers;
           for (const l of this.peerListeners) l(this._peers);
         } else if (parsed.kind === "error") {
-          console.warn(`[bridge] Room error: ${parsed.error}`);
         }
       } catch {
       }
@@ -97,9 +95,7 @@ var RoomClient = class {
       this.setState("closed");
       this.scheduleReconnect();
     });
-    socket.on("error", (err) => {
-      console.error(`[bridge] WebSocket error:`, err.message);
-      this.setState("error");
+    socket.on("error", () => {
     });
   }
   scheduleReconnect() {
@@ -107,7 +103,6 @@ var RoomClient = class {
     const backoff = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** this.reconnectAttempt);
     const jitter = Math.random() * 1e3;
     this.reconnectAttempt++;
-    console.log(`[bridge] Reconnecting in ${Math.round(backoff / 1e3)}s...`);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (!this.closed) this.connect();
@@ -201,8 +196,6 @@ var Bridge = class {
   config;
   events;
   room;
-  outputBuffer = "";
-  maxBufferSize = 5e5;
   lastScreens = /* @__PURE__ */ new Map();
   pollTimer = null;
   heartbeatTimer = null;
@@ -212,7 +205,7 @@ var Bridge = class {
   start() {
     this.room.onConnectionState((s) => {
       if (s === "open") this.events.onConnected?.();
-      else if (s === "closed" || s === "error") this.events.onDisconnected?.();
+      else if (s === "closed") this.events.onDisconnected?.();
     });
     this.room.onMessage((msg) => {
       this.handleMessage(msg);
@@ -292,7 +285,6 @@ var Bridge = class {
       if (screen !== lastScreen) {
         this.lastScreens.set(session, screen);
         if (screen.trim()) {
-          this.appendBuffer(screen);
           this.sendOutput(session, screen);
         }
         const state = detectState(screen);
@@ -341,12 +333,6 @@ var Bridge = class {
       agents: watched,
       uptime: Math.round((Date.now() - this.startTime) / 1e3)
     });
-  }
-  appendBuffer(content) {
-    this.outputBuffer += content;
-    if (this.outputBuffer.length > this.maxBufferSize) {
-      this.outputBuffer = this.outputBuffer.slice(-this.maxBufferSize);
-    }
   }
 };
 

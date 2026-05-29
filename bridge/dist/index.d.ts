@@ -21,8 +21,6 @@ declare class Bridge {
     private config;
     private events;
     private room;
-    private outputBuffer;
-    private maxBufferSize;
     private lastScreens;
     private pollTimer;
     private heartbeatTimer;
@@ -38,7 +36,6 @@ declare class Bridge {
     private pollSessions;
     private sendOutput;
     private sendHeartbeat;
-    private appendBuffer;
 }
 
 export { Bridge, type BridgeEvents };

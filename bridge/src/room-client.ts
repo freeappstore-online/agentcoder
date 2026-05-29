@@ -102,7 +102,6 @@ export class RoomClient {
     socket.on('open', () => {
       this.reconnectAttempt = 0
       this.setState('open')
-      console.log(`[bridge] Connected to room ${this.roomId}`)
     })
 
     socket.on('message', (raw) => {
@@ -120,7 +119,7 @@ export class RoomClient {
           this._peers = parsed.peers
           for (const l of this.peerListeners) l(this._peers)
         } else if (parsed.kind === 'error') {
-          console.warn(`[bridge] Room error: ${parsed.error}`)
+          // Room errors are surfaced via connection state
         }
       } catch {
         // ignore malformed frames
@@ -134,9 +133,8 @@ export class RoomClient {
       this.scheduleReconnect()
     })
 
-    socket.on('error', (err) => {
-      console.error(`[bridge] WebSocket error:`, err.message)
-      this.setState('error')
+    socket.on('error', () => {
+      // error is always followed by close — handle reconnect there
     })
   }
 
@@ -145,7 +143,7 @@ export class RoomClient {
     const backoff = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** this.reconnectAttempt)
     const jitter = Math.random() * 1000
     this.reconnectAttempt++
-    console.log(`[bridge] Reconnecting in ${Math.round(backoff / 1000)}s...`)
+    // Reconnect silently — TUI shows connection state
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
       if (!this.closed) this.connect()

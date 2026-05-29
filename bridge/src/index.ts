@@ -32,8 +32,6 @@ export interface BridgeEvents {
  */
 export class Bridge {
   private room: RoomClient
-  private outputBuffer = ''
-  private maxBufferSize = 500_000
   private lastScreens = new Map<string, string>()
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
@@ -59,7 +57,7 @@ export class Bridge {
   start(): void {
     this.room.onConnectionState((s) => {
       if (s === 'open') this.events.onConnected?.()
-      else if (s === 'closed' || s === 'error') this.events.onDisconnected?.()
+      else if (s === 'closed') this.events.onDisconnected?.()
     })
 
     this.room.onMessage<UIMessage>((msg) => {
@@ -157,7 +155,6 @@ export class Bridge {
         this.lastScreens.set(session, screen)
 
         if (screen.trim()) {
-          this.appendBuffer(screen)
           this.sendOutput(session, screen)
         }
 
@@ -213,10 +210,4 @@ export class Bridge {
     })
   }
 
-  private appendBuffer(content: string): void {
-    this.outputBuffer += content
-    if (this.outputBuffer.length > this.maxBufferSize) {
-      this.outputBuffer = this.outputBuffer.slice(-this.maxBufferSize)
-    }
-  }
 }

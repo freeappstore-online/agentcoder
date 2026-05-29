@@ -102,10 +102,13 @@ function login(): Promise<string> {
     })
 
     // Timeout after 5 minutes
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       server.close()
       reject(new Error('Login timed out (5 minutes). Try again.'))
     }, 300_000)
+
+    // Clear timeout if login succeeds before it fires
+    server.on('close', () => clearTimeout(timer))
   })
 }
 

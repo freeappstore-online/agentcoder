@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import {
   Bridge
-} from "./chunk-QYERO43Z.js";
+} from "./chunk-A443WZYD.js";
 
 // src/tui.ts
 import readline from "readline";
@@ -75,6 +75,7 @@ var Tui = class {
   }
   /** Register all discovered sessions (from tmux.listSessions) */
   discoverSessions(names) {
+    let added = false;
     for (const name of names) {
       if (!this.state.sessions.has(name)) {
         this.state.sessions.set(name, {
@@ -84,7 +85,11 @@ var Tui = class {
           bytesSent: 0,
           watched: false
         });
+        added = true;
       }
+    }
+    if (added && !this.hasAnyWatched() && !this.picking) {
+      this.openPicker();
     }
   }
   updateSession(name, state) {
@@ -269,8 +274,8 @@ var Tui = class {
     lines.push("");
     const watched = [...sessions.values()].filter((s) => s.watched).sort((a, b) => a.name.localeCompare(b.name));
     const unwatched = [...sessions.values()].filter((s) => !s.watched);
-    const hr = c(DIM, "\u2500".repeat(Math.min(w - 4, 56)));
-    lines.push(`  ${c(CYAN + BOLD, "Watching")} ${c(DIM, `(${watched.length}/${sessions.size})`)}  ${hr.slice(24)}`);
+    const hr = c(DIM, "\u2500".repeat(Math.min(w - 30, 40)));
+    lines.push(`  ${c(CYAN + BOLD, "Watching")} ${c(DIM, `(${watched.length}/${sessions.size})`)}  ${hr}`);
     if (watched.length === 0) {
       lines.push(`  ${c(DIM, "No sessions selected \u2014 press")} ${c(WHITE, "w")} ${c(DIM, "to pick")}`);
     } else {
@@ -287,7 +292,7 @@ var Tui = class {
       lines.push(`  ${c(DIM, `  +${unwatched.length} not monitored`)}`);
     }
     lines.push("");
-    lines.push(`  ${c(CYAN + BOLD, "Activity")}  ${hr.slice(20)}`);
+    lines.push(`  ${c(CYAN + BOLD, "Activity")}  ${hr}`);
     if (events.length === 0) {
       lines.push(`  ${c(DIM, "Waiting for activity...")}`);
     } else {
@@ -408,10 +413,11 @@ function login() {
     server.on("error", (err) => {
       reject(new Error(`Could not start auth server on port ${CLI_AUTH_PORT}: ${err.message}`));
     });
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       server.close();
       reject(new Error("Login timed out (5 minutes). Try again."));
     }, 3e5);
+    server.on("close", () => clearTimeout(timer));
   });
 }
 async function main() {

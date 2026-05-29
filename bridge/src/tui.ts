@@ -108,6 +108,7 @@ export class Tui {
 
   /** Register all discovered sessions (from tmux.listSessions) */
   discoverSessions(names: string[]): void {
+    let added = false
     for (const name of names) {
       if (!this.state.sessions.has(name)) {
         this.state.sessions.set(name, {
@@ -117,7 +118,12 @@ export class Tui {
           bytesSent: 0,
           watched: false,
         })
+        added = true
       }
+    }
+    // Auto-open picker on first discovery if nothing is watched
+    if (added && !this.hasAnyWatched() && !this.picking) {
+      this.openPicker()
     }
   }
 
@@ -345,9 +351,9 @@ export class Tui {
     // Sessions — show watched first, then unwatched dimmed
     const watched = [...sessions.values()].filter((s) => s.watched).sort((a, b) => a.name.localeCompare(b.name))
     const unwatched = [...sessions.values()].filter((s) => !s.watched)
-    const hr = c(DIM, '─'.repeat(Math.min(w - 4, 56)))
+    const hr = c(DIM, '─'.repeat(Math.min(w - 30, 40)))
 
-    lines.push(`  ${c(CYAN + BOLD, 'Watching')} ${c(DIM, `(${watched.length}/${sessions.size})`)}  ${hr.slice(24)}`)
+    lines.push(`  ${c(CYAN + BOLD, 'Watching')} ${c(DIM, `(${watched.length}/${sessions.size})`)}  ${hr}`)
 
     if (watched.length === 0) {
       lines.push(`  ${c(DIM, 'No sessions selected — press')} ${c(WHITE, 'w')} ${c(DIM, 'to pick')}`)
@@ -371,7 +377,7 @@ export class Tui {
     lines.push('')
 
     // Activity feed
-    lines.push(`  ${c(CYAN + BOLD, 'Activity')}  ${hr.slice(20)}`)
+    lines.push(`  ${c(CYAN + BOLD, 'Activity')}  ${hr}`)
 
     if (events.length === 0) {
       lines.push(`  ${c(DIM, 'Waiting for activity...')}`)
