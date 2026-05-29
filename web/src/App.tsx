@@ -11,6 +11,26 @@ import type { AgentState, UIMessage } from './types'
 
 const fas = initApp({ appId: 'agentcoder' })
 
+function CopyLine({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <div className="flex items-center justify-between gap-2 group">
+      <p className="text-[var(--muted)] truncate">{text}</p>
+      <button
+        onClick={copy}
+        className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-[var(--muted)] opacity-0 group-hover:opacity-100 hover:bg-[var(--surface)] transition-all"
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </div>
+  )
+}
+
 function ConnectBridge({ onRoom }: { onRoom: (room: Room) => void }) {
   const [sessionId, setSessionId] = useState(() => {
     return localStorage.getItem('ac:session') || crypto.randomUUID().slice(0, 8)
@@ -60,9 +80,9 @@ function ConnectBridge({ onRoom }: { onRoom: (room: Room) => void }) {
         <Card>
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-[var(--ink)]">Setup your bridge</h3>
-            <div className="space-y-2 text-xs text-[var(--muted)] font-mono bg-[var(--bg)] rounded-lg p-3">
-              <p>npx github:freeappstore-online/agentcoder login</p>
-              <p>npx github:freeappstore-online/agentcoder start --session {sessionId}</p>
+            <div className="space-y-2 text-xs font-mono bg-[var(--bg)] rounded-lg p-3">
+              <CopyLine text="npx github:freeappstore-online/agentcoder login" />
+              <CopyLine text={`npx github:freeappstore-online/agentcoder start --session ${sessionId}`} />
             </div>
             <p className="text-xs text-[var(--muted)]">
               The bridge runs on your machine and relays tmux sessions through this app.
