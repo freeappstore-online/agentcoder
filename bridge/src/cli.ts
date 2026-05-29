@@ -3,9 +3,13 @@ import { Bridge } from './index.js'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
+import { createServer } from 'http'
+import { exec } from 'child_process'
 
 const CONFIG_DIR = join(homedir(), '.agentcoder')
 const CREDS_FILE = join(CONFIG_DIR, 'credentials.json')
+const CLI_AUTH_PORT = 19283
+const APP_URL = 'https://agentcoder.freeappstore.online'
 
 interface Credentials {
   token: string
@@ -26,31 +30,100 @@ function saveCredentials(creds: Credentials): void {
   writeFileSync(CREDS_FILE, JSON.stringify(creds, null, 2))
 }
 
+function openBrowser(url: string): void {
+  const cmd = process.platform === 'darwin' ? 'open'
+    : process.platform === 'win32' ? 'start'
+    : 'xdg-open'
+  exec(`${cmd} "${url}"`)
+}
+
 function printUsage(): void {
   console.log(`
 AgentCoder Bridge — relay your tmux sessions to the web UI
 
 USAGE:
-  agentcoder start --session <id> --token <fas-token>
-  agentcoder start                    (uses saved credentials)
-  agentcoder status                   (show connection info)
+  agentcoder login                     Sign in via browser
+  agentcoder start --session <id>      Start bridge (uses saved token)
+  agentcoder start --session <id> --token <token>
+  agentcoder status                    Show connection info
 
 OPTIONS:
   --session <id>     Session ID (must match the web UI)
-  --token <token>    FAS session token
+  --token <token>    FAS session token (or use 'login' first)
   --api <url>        API base URL (default: wss://api.freeappstore.online)
 
 SETUP:
-  1. Sign in at agentcoder.freeappstore.online
-  2. Copy your session ID from the connect screen
-  3. Run: agentcoder start --session <id> --token <your-fas-token>
+  1. Run: agentcoder login
+  2. Sign in with GitHub in the browser
+  3. Run: agentcoder start --session <id>
 
 The bridge monitors all tmux sessions on this machine and relays
 their output to the web UI in real-time.
 `)
 }
 
-function main(): void {
+function login(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const server = createServer((req, res) => {
+      // CORS preflight
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        })
+        res.end()
+        return
+      }
+
+      if (req.method === 'POST' && req.url === '/callback') {
+        let body = ''
+        req.on('data', (chunk) => { body += chunk })
+        req.on('end', () => {
+          try {
+            const { token } = JSON.parse(body) as { token: string }
+            if (!token) throw new Error('No token')
+
+            res.writeHead(200, {
+              'Content-Type': 'text/html',
+              'Access-Control-Allow-Origin': '*',
+            })
+            res.end('<html><body><h2>Logged in! You can close this tab.</h2></body></html>')
+
+            server.close()
+            resolve(token)
+          } catch {
+            res.writeHead(400, { 'Access-Control-Allow-Origin': '*' })
+            res.end('Bad request')
+          }
+        })
+        return
+      }
+
+      res.writeHead(404)
+      res.end()
+    })
+
+    server.listen(CLI_AUTH_PORT, '127.0.0.1', () => {
+      const authUrl = `${APP_URL}?cli_auth=1&port=${CLI_AUTH_PORT}`
+      console.log('Opening browser for sign-in...')
+      console.log(`If the browser doesn't open, visit: ${authUrl}`)
+      openBrowser(authUrl)
+    })
+
+    server.on('error', (err) => {
+      reject(new Error(`Could not start auth server on port ${CLI_AUTH_PORT}: ${err.message}`))
+    })
+
+    // Timeout after 2 minutes
+    setTimeout(() => {
+      server.close()
+      reject(new Error('Login timed out (2 minutes). Try again.'))
+    }, 120_000)
+  })
+}
+
+async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const command = args[0]
 
@@ -59,14 +132,28 @@ function main(): void {
     process.exit(0)
   }
 
+  if (command === 'login') {
+    try {
+      const token = await login()
+      const saved = loadCredentials()
+      saveCredentials({ token, sessionId: saved?.sessionId ?? '' })
+      console.log('Logged in successfully! Token saved.')
+      console.log('Now run: agentcoder start --session <id>')
+    } catch (e) {
+      console.error((e as Error).message)
+      process.exit(1)
+    }
+    process.exit(0)
+  }
+
   if (command === 'status') {
     const creds = loadCredentials()
     if (creds) {
-      console.log(`Session: ${creds.sessionId}`)
+      console.log(`Session: ${creds.sessionId || '(not set)'}`)
       console.log(`Token: ${creds.token.slice(0, 20)}...`)
       console.log(`Config: ${CREDS_FILE}`)
     } else {
-      console.log('Not configured. Run: agentcoder start --session <id> --token <token>')
+      console.log('Not configured. Run: agentcoder login')
     }
     process.exit(0)
   }
@@ -95,9 +182,14 @@ function main(): void {
       }
     }
 
-    if (!sessionId || !token) {
-      console.error('Error: --session and --token are required (or save credentials first)')
-      console.error('Run: agentcoder start --session <id> --token <fas-token>')
+    if (!token) {
+      console.error('Not logged in. Run: agentcoder login')
+      process.exit(1)
+    }
+
+    if (!sessionId) {
+      console.error('Error: --session <id> is required')
+      console.error('Use the same session ID shown in the web UI.')
       process.exit(1)
     }
 

@@ -60,7 +60,8 @@ function ConnectBridge({ onRoom }: { onRoom: (room: Room) => void }) {
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-[var(--ink)]">Setup your bridge</h3>
             <div className="space-y-2 text-xs text-[var(--muted)] font-mono bg-[var(--bg)] rounded-lg p-3">
-              <p>npx github:freeappstore-online/agentcoder start --session {sessionId} --token YOUR_TOKEN</p>
+              <p>npx github:freeappstore-online/agentcoder login</p>
+              <p>npx github:freeappstore-online/agentcoder start --session {sessionId}</p>
             </div>
             <p className="text-xs text-[var(--muted)]">
               The bridge runs on your machine and relays tmux sessions through this app.
@@ -355,20 +356,94 @@ function SessionView({ room }: { room: Room }) {
   )
 }
 
+function CliAuthFlow() {
+  const [status, setStatus] = useState<'sending' | 'done' | 'error'>('sending')
+  const [errorMsg, setErrorMsg] = useState('')
+  const sent = useRef(false)
+
+  const params = new URLSearchParams(window.location.search)
+  const port = params.get('port') || '19283'
+
+  useEffect(() => {
+    if (sent.current) return
+    sent.current = true
+
+    const token = fas.auth.token
+    if (!token) {
+      setStatus('error')
+      setErrorMsg('No session token — sign in first.')
+      return
+    }
+
+    fetch(`http://127.0.0.1:${port}/callback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    })
+      .then((res) => {
+        if (res.ok) {
+          setStatus('done')
+          // Clean URL
+          window.history.replaceState({}, '', window.location.pathname)
+        } else {
+          throw new Error(`Bridge responded ${res.status}`)
+        }
+      })
+      .catch((e) => {
+        setStatus('error')
+        setErrorMsg((e as Error).message)
+      })
+  }, [port])
+
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center p-4">
+      <Card>
+        <div className="text-center space-y-3 py-4">
+          {status === 'sending' && (
+            <>
+              <Spinner size={20} />
+              <p className="text-sm text-[var(--muted)]">Sending token to CLI...</p>
+            </>
+          )}
+          {status === 'done' && (
+            <>
+              <p className="text-lg font-semibold text-emerald-600">Logged in!</p>
+              <p className="text-sm text-[var(--muted)]">
+                Return to your terminal. You can close this tab.
+              </p>
+            </>
+          )}
+          {status === 'error' && (
+            <>
+              <p className="text-lg font-semibold text-red-600">Login failed</p>
+              <p className="text-sm text-[var(--muted)]">{errorMsg}</p>
+              <p className="text-xs text-[var(--muted)]">
+                Make sure <code>agentcoder login</code> is still running, then refresh this page.
+              </p>
+            </>
+          )}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
 export default function App() {
   const { user, loading } = useAuth(fas)
   const [room, setRoom] = useState<Room | null>(null)
 
+  const isCliAuth = new URLSearchParams(window.location.search).has('cli_auth')
+
   // Auto-reconnect to last session
   useEffect(() => {
-    if (!user) return
+    if (!user || isCliAuth) return
     const lastSession = localStorage.getItem('ac:session')
     if (lastSession) {
       const r = fas.rooms.join(lastSession)
       setRoom(r)
       return () => r.close()
     }
-  }, [user])
+  }, [user, isCliAuth])
 
   if (loading) {
     return (
@@ -383,11 +458,18 @@ export default function App() {
       <div className="flex min-h-[100dvh] items-center justify-center p-4">
         <div className="text-center space-y-4">
           <h1 className="display-font text-2xl font-bold text-[var(--ink)]">AgentCoder</h1>
-          <p className="text-[var(--muted)]">Sign in to control your AI coding agents</p>
+          <p className="text-[var(--muted)]">
+            {isCliAuth ? 'Sign in to authorize the CLI' : 'Sign in to control your AI coding agents'}
+          </p>
           <SignInButton app={fas} />
         </div>
       </div>
     )
+  }
+
+  // CLI auth flow — user is signed in, send token to CLI
+  if (isCliAuth) {
+    return <CliAuthFlow />
   }
 
   return (
