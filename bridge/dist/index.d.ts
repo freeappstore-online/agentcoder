@@ -2,11 +2,13 @@ interface BridgeConfig {
     token: string;
     sessionId: string;
     apiBase?: string;
+    watchList?: string[];
 }
 interface BridgeEvents {
     onConnected?: () => void;
     onDisconnected?: () => void;
     onPeers?: (peers: string[]) => void;
+    onSessions?: (names: string[]) => void;
     onSessionState?: (agent: string, state: 'ready' | 'busy' | 'waiting') => void;
     onOutput?: (agent: string, bytes: number) => void;
     onCommand?: (from: string, agent: string, text: string) => void;
@@ -26,8 +28,10 @@ declare class Bridge {
     private heartbeatTimer;
     private startTime;
     private msgSeq;
+    private watchSet;
     constructor(config: BridgeConfig, events?: BridgeEvents);
     start(): void;
+    setWatchList(names: string[]): void;
     stop(): void;
     private handleMessage;
     private pollSessions;

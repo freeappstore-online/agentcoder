@@ -184,9 +184,13 @@ var CHUNK_SIZE = 3500;
 var HEARTBEAT_INTERVAL = 3e4;
 var POLL_INTERVAL = 2e3;
 var Bridge = class {
+  // null = watch nothing until set
   constructor(config, events = {}) {
     this.config = config;
     this.events = events;
+    if (config.watchList) {
+      this.watchSet = new Set(config.watchList);
+    }
     this.room = new RoomClient(
       "agentcoder",
       config.sessionId,
@@ -204,6 +208,7 @@ var Bridge = class {
   heartbeatTimer = null;
   startTime = Date.now();
   msgSeq = 0;
+  watchSet = null;
   start() {
     this.room.onConnectionState((s) => {
       if (s === "open") this.events.onConnected?.();
@@ -218,6 +223,9 @@ var Bridge = class {
     this.room.onPeers((peers) => {
       this.events.onPeers?.(peers.map((p) => p.login));
     });
+  }
+  setWatchList(names) {
+    this.watchSet = new Set(names);
   }
   stop() {
     if (this.pollTimer) clearInterval(this.pollTimer);
@@ -260,7 +268,9 @@ var Bridge = class {
     }
   }
   pollSessions() {
-    const sessions = listSessions();
+    const allSessions = listSessions();
+    this.events.onSessions?.(allSessions);
+    const sessions = this.watchSet ? allSessions.filter((s) => this.watchSet.has(s)) : [];
     for (const session of sessions) {
       const target = getTarget(session);
       const screen = captureScreen(target);
@@ -310,10 +320,11 @@ var Bridge = class {
     }
   }
   sendHeartbeat() {
-    const sessions = listSessions();
+    const allSessions = listSessions();
+    const watched = this.watchSet ? allSessions.filter((s) => this.watchSet.has(s)) : [];
     this.room.send({
       type: "heartbeat",
-      agents: sessions,
+      agents: watched,
       uptime: Math.round((Date.now() - this.startTime) / 1e3)
     });
   }

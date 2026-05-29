@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import {
   Bridge
-} from "./chunk-L2CCFHNW.js";
+} from "./chunk-XBGRBHNN.js";
 
 // src/tui.ts
 import readline from "readline";
@@ -16,7 +16,7 @@ var RED = `${ESC}31m`;
 var BLUE = `${ESC}34m`;
 var WHITE = `${ESC}37m`;
 var GRAY = `${ESC}90m`;
-var BG_RESET = `${ESC}49m`;
+var INVERSE = `${ESC}7m`;
 var CLEAR = `${ESC}2J${ESC}H`;
 var HIDE_CURSOR = `${ESC}?25l`;
 var SHOW_CURSOR = `${ESC}?25h`;
@@ -33,6 +33,10 @@ var Tui = class {
   state;
   renderTimer = null;
   actionResolve = null;
+  picking = false;
+  pickerCursor = 0;
+  pickerSessions = [];
+  onWatchChanged = null;
   constructor(roomId) {
     this.state = {
       connected: false,
@@ -44,6 +48,23 @@ var Tui = class {
       totalBytesSent: 0
     };
   }
+  /** Set initial watch list (from --watch flag) */
+  setInitialWatch(names) {
+    for (const name of names) {
+      const existing = this.state.sessions.get(name);
+      if (existing) {
+        existing.watched = true;
+      } else {
+        this.state.sessions.set(name, {
+          name,
+          state: "waiting",
+          lastActivity: Date.now(),
+          bytesSent: 0,
+          watched: true
+        });
+      }
+    }
+  }
   setConnected(connected) {
     this.state.connected = connected;
     this.render();
@@ -51,6 +72,20 @@ var Tui = class {
   setPeers(peers) {
     this.state.peers = peers;
     this.render();
+  }
+  /** Register all discovered sessions (from tmux.listSessions) */
+  discoverSessions(names) {
+    for (const name of names) {
+      if (!this.state.sessions.has(name)) {
+        this.state.sessions.set(name, {
+          name,
+          state: "waiting",
+          lastActivity: Date.now(),
+          bytesSent: 0,
+          watched: false
+        });
+      }
+    }
   }
   updateSession(name, state) {
     const existing = this.state.sessions.get(name);
@@ -62,7 +97,8 @@ var Tui = class {
         name,
         state,
         lastActivity: Date.now(),
-        bytesSent: 0
+        bytesSent: 0,
+        watched: false
       });
     }
   }
@@ -81,14 +117,24 @@ var Tui = class {
   recordControl(from, action) {
     this.addEvent("\u2190", from, action, "");
   }
+  getWatched() {
+    return [...this.state.sessions.values()].filter((s) => s.watched).map((s) => s.name);
+  }
+  hasAnyWatched() {
+    return [...this.state.sessions.values()].some((s) => s.watched);
+  }
   addEvent(direction, source, action, detail) {
     this.state.events.push({ time: Date.now(), direction, source, action, detail });
     if (this.state.events.length > MAX_EVENTS) {
       this.state.events = this.state.events.slice(-MAX_EVENTS);
     }
   }
-  start() {
+  start(onWatchChanged) {
+    this.onWatchChanged = onWatchChanged;
     process.stdout.write(HIDE_CURSOR);
+    if (!this.hasAnyWatched() && this.state.sessions.size > 0) {
+      this.openPicker();
+    }
     this.render();
     this.renderTimer = setInterval(() => this.render(), 1e3);
     return new Promise((resolve) => {
@@ -114,15 +160,93 @@ var Tui = class {
     process.stdout.write(SHOW_CURSOR);
     process.stdout.write(CLEAR);
   }
+  openPicker() {
+    this.picking = true;
+    this.pickerCursor = 0;
+    this.pickerSessions = [...this.state.sessions.keys()].sort();
+    this.render();
+  }
+  closePicker() {
+    this.picking = false;
+    const watched = this.getWatched();
+    this.onWatchChanged?.(watched);
+    this.render();
+  }
   onKeypress = (_str, key) => {
     if (key.ctrl && key.name === "c") {
       this.actionResolve?.("quit");
       return;
     }
+    if (this.picking) {
+      this.handlePickerKey(key);
+      return;
+    }
     const ch = (key.name || "").toLowerCase();
     if (ch === "q") this.actionResolve?.("quit");
+    if (ch === "w") this.openPicker();
   };
+  handlePickerKey(key) {
+    const ch = (key.name || "").toLowerCase();
+    const total = this.pickerSessions.length;
+    if (total === 0) return;
+    if (ch === "up" || ch === "k") {
+      this.pickerCursor = (this.pickerCursor - 1 + total) % total;
+    } else if (ch === "down" || ch === "j") {
+      this.pickerCursor = (this.pickerCursor + 1) % total;
+    } else if (ch === "space") {
+      const name = this.pickerSessions[this.pickerCursor];
+      const session = this.state.sessions.get(name);
+      if (session) session.watched = !session.watched;
+    } else if (ch === "return") {
+      this.closePicker();
+      return;
+    } else if (ch === "a") {
+      const allWatched = this.pickerSessions.every(
+        (n) => this.state.sessions.get(n)?.watched
+      );
+      for (const n of this.pickerSessions) {
+        const s = this.state.sessions.get(n);
+        if (s) s.watched = !allWatched;
+      }
+    } else if (ch === "escape") {
+      this.closePicker();
+      return;
+    }
+    this.render();
+  }
   render() {
+    if (this.picking) {
+      this.renderPicker();
+    } else {
+      this.renderDashboard();
+    }
+  }
+  renderPicker() {
+    const lines = [];
+    lines.push("");
+    for (const line of BANNER) {
+      lines.push(c(CYAN, line));
+    }
+    lines.push("");
+    lines.push(`  ${c(WHITE + BOLD, "Select sessions to monitor")}`);
+    lines.push("");
+    for (let i = 0; i < this.pickerSessions.length; i++) {
+      const name = this.pickerSessions[i];
+      const session = this.state.sessions.get(name);
+      const isSelected = i === this.pickerCursor;
+      const check = session.watched ? c(GREEN, "\u25C9") : c(DIM, "\u25CB");
+      const label = isSelected ? c(INVERSE + WHITE, ` ${name} `) : c(WHITE, ` ${name}`);
+      const stateLabel = session.state === "busy" ? c(BLUE, "busy") : session.state === "ready" ? c(GREEN, "ready") : c(DIM, "idle");
+      lines.push(`  ${check} ${label}  ${stateLabel}`);
+    }
+    lines.push("");
+    lines.push(
+      `  ${c(DIM, "\u2191\u2193")} ${c(GRAY, "navigate")}    ${c(DIM, "space")} ${c(GRAY, "toggle")}    ${c(DIM, "a")} ${c(GRAY, "all")}    ${c(DIM, "enter")} ${c(GRAY, "confirm")}`
+    );
+    lines.push("");
+    process.stdout.write(CLEAR + lines.join("\n"));
+  }
+  renderDashboard() {
     const { connected, roomId, peers, sessions, events, startTime, totalBytesSent } = this.state;
     const lines = [];
     const w = process.stdout.columns || 60;
@@ -143,22 +267,24 @@ var Tui = class {
       `  ${c(DIM, "Peers")}   ${peerText}    ${c(DIM, "Sent")} ${sentText}`
     );
     lines.push("");
-    const sessionList = [...sessions.values()].sort((a, b) => b.lastActivity - a.lastActivity);
+    const watched = [...sessions.values()].filter((s) => s.watched).sort((a, b) => a.name.localeCompare(b.name));
+    const unwatched = [...sessions.values()].filter((s) => !s.watched);
     const hr = c(DIM, "\u2500".repeat(Math.min(w - 4, 56)));
-    lines.push(`  ${c(CYAN + BOLD, "Sessions")} ${c(DIM, `(${sessionList.length})`)}  ${hr.slice(20)}`);
-    if (sessionList.length === 0) {
-      lines.push(`  ${c(DIM, "No tmux sessions detected")}`);
+    lines.push(`  ${c(CYAN + BOLD, "Watching")} ${c(DIM, `(${watched.length}/${sessions.size})`)}  ${hr.slice(24)}`);
+    if (watched.length === 0) {
+      lines.push(`  ${c(DIM, "No sessions selected \u2014 press")} ${c(WHITE, "w")} ${c(DIM, "to pick")}`);
     } else {
-      for (const s of sessionList.slice(0, 10)) {
+      for (const s of watched) {
         const dot = s.state === "busy" ? c(BLUE, "\u25CF") : s.state === "ready" ? c(GREEN, "\u25CF") : c(YELLOW, "\u25CB");
         const stateText = s.state === "busy" ? c(BLUE, "busy") : s.state === "ready" ? c(GREEN, "ready") : c(YELLOW, "waiting");
         const age = formatAge(Date.now() - s.lastActivity);
         const name = s.name.length > 20 ? s.name.slice(0, 19) + "\u2026" : s.name.padEnd(20);
-        lines.push(`  ${dot} ${c(WHITE, name)} ${stateText.padEnd(18)} ${c(DIM, age)}`);
+        const sent = s.bytesSent > 0 ? c(DIM, formatBytes(s.bytesSent)) : "";
+        lines.push(`  ${dot} ${c(WHITE, name)} ${stateText.padEnd(18)} ${c(DIM, age)}  ${sent}`);
       }
-      if (sessionList.length > 10) {
-        lines.push(`  ${c(DIM, `  +${sessionList.length - 10} more`)}`);
-      }
+    }
+    if (unwatched.length > 0) {
+      lines.push(`  ${c(DIM, `  +${unwatched.length} not monitored`)}`);
     }
     lines.push("");
     lines.push(`  ${c(CYAN + BOLD, "Activity")}  ${hr.slice(20)}`);
@@ -174,7 +300,7 @@ var Tui = class {
       }
     }
     lines.push("");
-    lines.push(`  ${c(DIM, "q")} ${c(GRAY, "quit")}    ${c(DIM, "Ctrl+C")} ${c(GRAY, "stop")}`);
+    lines.push(`  ${c(DIM, "w")} ${c(GRAY, "watch")}    ${c(DIM, "q")} ${c(GRAY, "quit")}    ${c(DIM, "Ctrl+C")} ${c(GRAY, "stop")}`);
     lines.push("");
     process.stdout.write(CLEAR + lines.join("\n"));
   }
@@ -238,6 +364,7 @@ USAGE:
 
 OPTIONS:
   --session <id>     Session ID (must match the web UI)
+  --watch <names>    Comma-separated tmux sessions to monitor
   --token <token>    FAS session token (or use 'login' first)
   --api <url>        API base URL (default: wss://api.freeappstore.online)
 
@@ -322,6 +449,7 @@ async function main() {
     let sessionId = "";
     let token = "";
     let apiBase;
+    let watchList;
     for (let i = 1; i < args.length; i++) {
       if (args[i] === "--session" && args[i + 1]) {
         sessionId = args[++i];
@@ -329,6 +457,8 @@ async function main() {
         token = args[++i];
       } else if (args[i] === "--api" && args[i + 1]) {
         apiBase = args[++i];
+      } else if (args[i] === "--watch" && args[i + 1]) {
+        watchList = args[++i].split(",").map((s) => s.trim()).filter(Boolean);
       }
     }
     if (!sessionId || !token) {
@@ -349,17 +479,19 @@ async function main() {
     }
     saveCredentials({ token, sessionId });
     const tui = new Tui(sessionId);
-    const bridge = new Bridge({ token, sessionId, apiBase }, {
+    if (watchList) tui.setInitialWatch(watchList);
+    const bridge = new Bridge({ token, sessionId, apiBase, watchList }, {
       onConnected: () => tui.setConnected(true),
       onDisconnected: () => tui.setConnected(false),
       onPeers: (peers) => tui.setPeers(peers),
+      onSessions: (names) => tui.discoverSessions(names),
       onSessionState: (agent, state) => tui.updateSession(agent, state),
       onOutput: (agent, bytes) => tui.recordOutput(agent, bytes),
       onCommand: (from, agent, text) => tui.recordCommand(from, agent, text),
       onControl: (from, action2) => tui.recordControl(from, action2)
     });
     bridge.start();
-    const action = await tui.start();
+    const action = await tui.start((watched) => bridge.setWatchList(watched));
     tui.stop();
     bridge.stop();
     if (action === "quit") process.exit(0);

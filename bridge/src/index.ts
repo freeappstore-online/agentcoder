@@ -9,6 +9,7 @@ interface BridgeConfig {
   token: string
   sessionId: string
   apiBase?: string
+  watchList?: string[]
 }
 
 type UIMessage =
@@ -19,6 +20,7 @@ export interface BridgeEvents {
   onConnected?: () => void
   onDisconnected?: () => void
   onPeers?: (peers: string[]) => void
+  onSessions?: (names: string[]) => void
   onSessionState?: (agent: string, state: 'ready' | 'busy' | 'waiting') => void
   onOutput?: (agent: string, bytes: number) => void
   onCommand?: (from: string, agent: string, text: string) => void
@@ -37,11 +39,15 @@ export class Bridge {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private startTime = Date.now()
   private msgSeq = 0
+  private watchSet: Set<string> | null = null // null = watch nothing until set
 
   constructor(
     private config: BridgeConfig,
     private events: BridgeEvents = {},
   ) {
+    if (config.watchList) {
+      this.watchSet = new Set(config.watchList)
+    }
     this.room = new RoomClient(
       'agentcoder',
       config.sessionId,
@@ -67,6 +73,10 @@ export class Bridge {
     this.room.onPeers((peers) => {
       this.events.onPeers?.(peers.map((p) => p.login))
     })
+  }
+
+  setWatchList(names: string[]): void {
+    this.watchSet = new Set(names)
   }
 
   stop(): void {
@@ -114,7 +124,13 @@ export class Bridge {
   }
 
   private pollSessions(): void {
-    const sessions = tmux.listSessions()
+    const allSessions = tmux.listSessions()
+    this.events.onSessions?.(allSessions)
+
+    // Only poll watched sessions
+    const sessions = this.watchSet
+      ? allSessions.filter((s) => this.watchSet!.has(s))
+      : []
 
     for (const session of sessions) {
       const target = tmux.getTarget(session)
@@ -170,10 +186,13 @@ export class Bridge {
   }
 
   private sendHeartbeat(): void {
-    const sessions = tmux.listSessions()
+    const allSessions = tmux.listSessions()
+    const watched = this.watchSet
+      ? allSessions.filter((s) => this.watchSet!.has(s))
+      : []
     this.room.send({
       type: 'heartbeat',
-      agents: sessions,
+      agents: watched,
       uptime: Math.round((Date.now() - this.startTime) / 1000),
     })
   }

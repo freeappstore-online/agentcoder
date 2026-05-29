@@ -50,6 +50,7 @@ USAGE:
 
 OPTIONS:
   --session <id>     Session ID (must match the web UI)
+  --watch <names>    Comma-separated tmux sessions to monitor
   --token <token>    FAS session token (or use 'login' first)
   --api <url>        API base URL (default: wss://api.freeappstore.online)
 
@@ -147,6 +148,7 @@ async function main(): Promise<void> {
     let sessionId = ''
     let token = ''
     let apiBase: string | undefined
+    let watchList: string[] | undefined
 
     for (let i = 1; i < args.length; i++) {
       if (args[i] === '--session' && args[i + 1]) {
@@ -155,6 +157,8 @@ async function main(): Promise<void> {
         token = args[++i]!
       } else if (args[i] === '--api' && args[i + 1]) {
         apiBase = args[++i]!
+      } else if (args[i] === '--watch' && args[i + 1]) {
+        watchList = args[++i]!.split(',').map((s) => s.trim()).filter(Boolean)
       }
     }
 
@@ -182,11 +186,13 @@ async function main(): Promise<void> {
     saveCredentials({ token, sessionId })
 
     const tui = new Tui(sessionId)
+    if (watchList) tui.setInitialWatch(watchList)
 
-    const bridge = new Bridge({ token, sessionId, apiBase }, {
+    const bridge = new Bridge({ token, sessionId, apiBase, watchList }, {
       onConnected: () => tui.setConnected(true),
       onDisconnected: () => tui.setConnected(false),
       onPeers: (peers) => tui.setPeers(peers),
+      onSessions: (names) => tui.discoverSessions(names),
       onSessionState: (agent, state) => tui.updateSession(agent, state),
       onOutput: (agent, bytes) => tui.recordOutput(agent, bytes),
       onCommand: (from, agent, text) => tui.recordCommand(from, agent, text),
@@ -195,7 +201,7 @@ async function main(): Promise<void> {
 
     bridge.start()
 
-    const action = await tui.start()
+    const action = await tui.start((watched) => bridge.setWatchList(watched))
     tui.stop()
     bridge.stop()
 
