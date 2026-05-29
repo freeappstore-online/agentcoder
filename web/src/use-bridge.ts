@@ -54,8 +54,20 @@ export function useBridge(room: Room | null) {
           break
 
         case 'output': {
+          // Reassemble chunked messages, then replace per-agent screen
+          const applyScreen = (screen: string, agent: string) => {
+            setState((prev) => {
+              // Replace the last screen for this agent (bridge sends full snapshots, not diffs)
+              const marker = `\n--- ${agent} ---\n`
+              const idx = prev.outputBuffer.lastIndexOf(marker)
+              const before = idx >= 0 ? prev.outputBuffer.slice(0, idx) : prev.outputBuffer
+              let buf = before + marker + screen
+              if (buf.length > MAX_BUFFER_SIZE) buf = buf.slice(-MAX_BUFFER_SIZE)
+              return { ...prev, outputBuffer: buf }
+            })
+          }
+
           if (data.total && data.total > 1) {
-            // Multi-chunk message — reassemble
             const chunkKey = `${data.agent}:${data.session}`
             let entry = chunks.current.get(chunkKey)
             if (!entry || data.seq === 0) {
@@ -64,24 +76,14 @@ export function useBridge(room: Room | null) {
             }
             entry.parts[data.seq] = data.content
 
-            // Check if all chunks received
             const received = entry.parts.filter(Boolean).length
             if (received === entry.total) {
               const full = entry.parts.join('')
               chunks.current.delete(chunkKey)
-              setState((prev) => {
-                let buf = prev.outputBuffer + full
-                if (buf.length > MAX_BUFFER_SIZE) buf = buf.slice(-MAX_BUFFER_SIZE)
-                return { ...prev, outputBuffer: buf }
-              })
+              applyScreen(full, data.agent)
             }
           } else {
-            // Single chunk
-            setState((prev) => {
-              let buf = prev.outputBuffer + data.content
-              if (buf.length > MAX_BUFFER_SIZE) buf = buf.slice(-MAX_BUFFER_SIZE)
-              return { ...prev, outputBuffer: buf }
-            })
+            applyScreen(data.content, data.agent)
           }
           break
         }
@@ -99,6 +101,9 @@ export function useBridge(room: Room | null) {
       unsubState()
       unsubMsg()
       clearInterval(heartbeatCheck)
+      chunks.current.clear()
+      lastHeartbeat.current = 0
+      setState({ connected: false, bridgeOnline: false, agents: [], agentStates: {}, outputBuffer: '' })
     }
   }, [room])
 

@@ -71,9 +71,10 @@ export function TerminalView({ output }: TerminalViewProps) {
 
   if (!output) return null
 
+  // Show last 200 lines, render as single pass (no per-line React elements)
   const lines = output.split('\n')
-  // Show last 200 lines to keep rendering fast
   const visible = lines.slice(-200)
+  const startIdx = lines.length - visible.length
 
   return (
     <div className="border-t border-[var(--border)]">
@@ -91,7 +92,7 @@ export function TerminalView({ output }: TerminalViewProps) {
         className="overflow-auto bg-[var(--bg)] px-4 py-2 text-sm font-mono leading-relaxed text-[var(--ink)] max-h-64"
       >
         {visible.map((line, i) => (
-          <span key={i}>
+          <span key={startIdx + i}>
             {highlightLine(line)}
             {'\n'}
           </span>

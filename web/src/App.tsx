@@ -220,7 +220,7 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
           </Card>
         )}
 
-        {bridgeOnline && outputBuffer.length === 0 && (
+        {bridgeOnline && outputBuffer.length === 0 && !needsKey && (
           <Card>
             <p className="text-sm text-[var(--muted)] text-center py-4">
               Bridge connected. Waiting for agent output...
