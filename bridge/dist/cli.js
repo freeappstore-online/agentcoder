@@ -56,37 +56,18 @@ their output to the web UI in real-time.
 function login() {
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
-      if (req.method === "OPTIONS") {
-        res.writeHead(204, {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "POST",
-          "Access-Control-Allow-Headers": "Content-Type",
-          "Access-Control-Allow-Private-Network": "true"
-        });
-        res.end();
-        return;
-      }
-      if (req.method === "POST" && req.url === "/callback") {
-        let body = "";
-        req.on("data", (chunk) => {
-          body += chunk;
-        });
-        req.on("end", () => {
-          try {
-            const { token } = JSON.parse(body);
-            if (!token) throw new Error("No token");
-            res.writeHead(200, {
-              "Content-Type": "text/html",
-              "Access-Control-Allow-Origin": "*"
-            });
-            res.end("<html><body><h2>Logged in! You can close this tab.</h2></body></html>");
-            server.close();
-            resolve(token);
-          } catch {
-            res.writeHead(400, { "Access-Control-Allow-Origin": "*" });
-            res.end("Bad request");
-          }
-        });
+      const url = new URL(req.url ?? "/", `http://127.0.0.1:${CLI_AUTH_PORT}`);
+      if (url.pathname === "/callback") {
+        const token = url.searchParams.get("token");
+        if (!token) {
+          res.writeHead(400, { "Content-Type": "text/html" });
+          res.end("<html><body><h2>Missing token.</h2></body></html>");
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end('<html><body style="font-family:system-ui;text-align:center;padding:3rem"><h2>Logged in!</h2><p>Return to your terminal. You can close this tab.</p></body></html>');
+        server.close();
+        resolve(token);
         return;
       }
       res.writeHead(404);

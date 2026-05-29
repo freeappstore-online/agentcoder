@@ -365,71 +365,28 @@ function SessionView({ room, onDisconnect }: { room: Room; onDisconnect: () => v
 }
 
 function CliAuthFlow() {
-  const [status, setStatus] = useState<'sending' | 'done' | 'error'>('sending')
-  const [errorMsg, setErrorMsg] = useState('')
-  const sent = useRef(false)
-
   const params = new URLSearchParams(window.location.search)
   const port = params.get('port') || '19283'
+  const redirected = useRef(false)
 
   useEffect(() => {
-    if (sent.current) return
-    sent.current = true
+    if (redirected.current) return
+    redirected.current = true
 
     const token = fas.auth.token
-    if (!token) {
-      setStatus('error')
-      setErrorMsg('No session token — sign in first.')
-      return
-    }
+    if (!token) return
 
-    fetch(`http://127.0.0.1:${port}/callback`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-    })
-      .then((res) => {
-        if (res.ok) {
-          setStatus('done')
-          // Clean URL
-          window.history.replaceState({}, '', window.location.pathname)
-        } else {
-          throw new Error(`Bridge responded ${res.status}`)
-        }
-      })
-      .catch((e) => {
-        setStatus('error')
-        setErrorMsg((e as Error).message)
-      })
+    // Redirect to localhost — top-level navigation works from HTTPS to localhost
+    // (unlike fetch, which is blocked by Private Network Access)
+    window.location.href = `http://127.0.0.1:${port}/callback?token=${encodeURIComponent(token)}`
   }, [port])
 
   return (
     <div className="flex min-h-[100dvh] items-center justify-center p-4">
       <Card>
         <div className="text-center space-y-3 py-4">
-          {status === 'sending' && (
-            <>
-              <Spinner size={20} />
-              <p className="text-sm text-[var(--muted)]">Sending token to CLI...</p>
-            </>
-          )}
-          {status === 'done' && (
-            <>
-              <p className="text-lg font-semibold text-emerald-600">Logged in!</p>
-              <p className="text-sm text-[var(--muted)]">
-                Return to your terminal. You can close this tab.
-              </p>
-            </>
-          )}
-          {status === 'error' && (
-            <>
-              <p className="text-lg font-semibold text-red-600">Login failed</p>
-              <p className="text-sm text-[var(--muted)]">{errorMsg}</p>
-              <p className="text-xs text-[var(--muted)]">
-                Make sure <code>agentcoder login</code> is still running, then refresh this page.
-              </p>
-            </>
-          )}
+          <Spinner size={20} />
+          <p className="text-sm text-[var(--muted)]">Sending token to CLI...</p>
         </div>
       </Card>
     </div>
