@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { createServer } from 'http'
-import { exec } from 'child_process'
+import { execFile } from 'child_process'
 
 const CONFIG_DIR = join(homedir(), '.agentcoder')
 const CREDS_FILE = join(CONFIG_DIR, 'credentials.json')
@@ -34,7 +34,7 @@ function openBrowser(url: string): void {
   const cmd = process.platform === 'darwin' ? 'open'
     : process.platform === 'win32' ? 'start'
     : 'xdg-open'
-  exec(`${cmd} "${url}"`)
+  execFile(cmd, [url], () => {})
 }
 
 function printUsage(): void {

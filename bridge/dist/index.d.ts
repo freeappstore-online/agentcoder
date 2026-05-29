@@ -21,6 +21,7 @@ declare class Bridge {
     private pollTimer;
     private heartbeatTimer;
     private startTime;
+    private msgSeq;
     constructor(config: BridgeConfig);
     start(): void;
     stop(): void;

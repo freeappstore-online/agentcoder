@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 import {
   Bridge
-} from "./chunk-KPLIIULX.js";
+} from "./chunk-YULHQWZZ.js";
 
 // src/cli.ts
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { createServer } from "http";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 var CONFIG_DIR = join(homedir(), ".agentcoder");
 var CREDS_FILE = join(CONFIG_DIR, "credentials.json");
 var CLI_AUTH_PORT = 19283;
@@ -27,7 +27,8 @@ function saveCredentials(creds) {
 }
 function openBrowser(url) {
   const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-  exec(`${cmd} "${url}"`);
+  execFile(cmd, [url], () => {
+  });
 }
 function printUsage() {
   console.log(`

@@ -17,6 +17,11 @@ function tmux(...args: string[]): string {
   }
 }
 
+/** Get the tmux target for a session (first pane of first window) */
+export function getTarget(sessionName: string): string {
+  return `${sessionName}:0.0`
+}
+
 /** Check if a tmux session exists */
 export function sessionExists(name: string): boolean {
   try {

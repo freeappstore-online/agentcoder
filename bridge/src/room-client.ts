@@ -91,7 +91,11 @@ export class RoomClient {
     if (this.closed) return
     this.setState('connecting')
 
-    const url = `${this.apiBase}/v1/apps/${encodeURIComponent(this.appId)}/rooms/${encodeURIComponent(this.roomId)}?token=${encodeURIComponent(this.token)}`
+    // Normalize protocol: https→wss, http→ws, pass wss/ws through
+    const base = this.apiBase
+      .replace(/^https:/, 'wss:')
+      .replace(/^http:/, 'ws:')
+    const url = `${base}/v1/apps/${encodeURIComponent(this.appId)}/rooms/${encodeURIComponent(this.roomId)}?token=${encodeURIComponent(this.token)}`
     const socket = new WebSocket(url)
     this.socket = socket
 

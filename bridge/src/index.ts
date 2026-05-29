@@ -32,6 +32,7 @@ export class Bridge {
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private startTime = Date.now()
+  private msgSeq = 0
 
   constructor(private config: BridgeConfig) {
     this.room = new RoomClient(
@@ -81,8 +82,9 @@ export class Bridge {
       case 'command': {
         console.log(`[bridge] Command for ${msg.agent}: ${msg.text.slice(0, 80)}...`)
         if (tmux.sessionExists(msg.agent)) {
-          tmux.sendKeys(msg.agent, msg.text)
-          tmux.sendSpecialKey(msg.agent, 'Enter')
+          const target = tmux.getTarget(msg.agent)
+          tmux.sendKeys(target, msg.text)
+          tmux.sendSpecialKey(target, 'Enter')
         } else {
           console.warn(`[bridge] Session ${msg.agent} not found`)
         }
@@ -91,25 +93,21 @@ export class Bridge {
 
       case 'control': {
         const { agent, action } = msg
+        if (!tmux.sessionExists(agent)) break
+        const target = tmux.getTarget(agent)
         switch (action) {
           case 'interrupt':
-            if (tmux.sessionExists(agent)) {
-              tmux.sendSpecialKey(agent, 'C-c')
-              console.log(`[bridge] Sent Ctrl+C to ${agent}`)
-            }
+            tmux.sendSpecialKey(target, 'C-c')
+            console.log(`[bridge] Sent Ctrl+C to ${agent}`)
             break
           case 'resync': {
-            // Re-send current screen
-            const screen = tmux.captureScreen(agent)
+            const screen = tmux.captureScreen(target)
             this.sendOutput(agent, screen)
             break
           }
           case 'stop':
-            // Kill the tmux session
-            if (tmux.sessionExists(agent)) {
-              tmux.sendSpecialKey(agent, 'C-c')
-              console.log(`[bridge] Stopping ${agent}`)
-            }
+            tmux.sendSpecialKey(target, 'C-c')
+            console.log(`[bridge] Stopping ${agent}`)
             break
         }
         break
@@ -121,7 +119,8 @@ export class Bridge {
     const sessions = tmux.listSessions()
 
     for (const session of sessions) {
-      const screen = tmux.captureScreen(session)
+      const target = tmux.getTarget(session)
+      const screen = tmux.captureScreen(target)
       const lastScreen = this.lastScreens.get(session)
 
       if (screen !== lastScreen) {
@@ -146,11 +145,12 @@ export class Bridge {
   }
 
   private sendOutput(agent: string, content: string): void {
+    const msgId = String(++this.msgSeq)
     if (content.length <= CHUNK_SIZE) {
       this.room.send({
         type: 'output',
         agent,
-        session: '',
+        session: msgId,
         content,
         seq: 0,
       })
@@ -164,8 +164,8 @@ export class Bridge {
         this.room.send({
           type: 'output',
           agent,
-          session: '',
-          content: chunks[i],
+          session: msgId,
+          content: chunks[i]!,
           seq: i,
           total: chunks.length,
         })
