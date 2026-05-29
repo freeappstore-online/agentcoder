@@ -130,7 +130,7 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
   const voice = useVoiceInput()
   const [input, setInput] = useState('')
   const [composedPreview, setComposedPreview] = useState<string | null>(null)
-  const [needsKey, setNeedsKey] = useState(false)
+  const [needsKey, setNeedsKey] = useState(true)
   const lastTranslatedLen = useRef(0)
   const outputRef = useRef<HTMLDivElement>(null)
 
@@ -188,16 +188,7 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
     <div className="flex flex-1 flex-col">
       {/* Translation panel */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={outputRef}>
-        {needsKey && (
-          <KeyPrompt
-            app={fas}
-            provider="anthropic"
-            providerName="Anthropic"
-            message="AgentCoder uses AI to translate terminal output into plain English. Add your Anthropic API key to enable the translation layer."
-          />
-        )}
-
-        {!bridgeOnline && !needsKey && (
+        {!bridgeOnline && (
           <Card>
             <div className="text-center py-4">
               <p className="text-sm font-medium text-[var(--ink)]">Bridge not connected</p>
@@ -208,12 +199,21 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
           </Card>
         )}
 
-        {bridgeOnline && !lastTranslation && !translating && outputBuffer.length === 0 && !needsKey && (
+        {bridgeOnline && outputBuffer.length === 0 && (
           <Card>
             <p className="text-sm text-[var(--muted)] text-center py-4">
               Bridge connected. Waiting for agent output...
             </p>
           </Card>
+        )}
+
+        {needsKey && bridgeOnline && (
+          <KeyPrompt
+            app={fas}
+            provider="anthropic"
+            providerName="Anthropic"
+            message="AgentCoder uses AI to translate terminal output into plain English. Add your Anthropic API key to enable the translation layer."
+          />
         )}
 
         {outputBuffer.length > 0 && !lastTranslation && !translating && !needsKey && (
@@ -236,7 +236,7 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
           </Card>
         )}
 
-        {error && (
+        {error && !needsKey && (
           <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30 p-4">
             <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
           </div>
@@ -278,6 +278,12 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
             <div className="text-xs text-[var(--muted)]">
               Agent status: {lastTranslation.agentStatus} | Buffer: {(outputBuffer.length / 1024).toFixed(1)}KB
             </div>
+          </div>
+        )}
+
+        {bridgeOnline && outputBuffer.length > 0 && !lastTranslation && (
+          <div className="text-xs text-[var(--muted)] text-center">
+            Receiving output... {(outputBuffer.length / 1024).toFixed(1)}KB buffered
           </div>
         )}
       </div>
