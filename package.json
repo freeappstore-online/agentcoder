@@ -9,6 +9,9 @@
   },
   "pnpm": { "onlyBuiltDependencies": ["esbuild"] },
   "repository": { "type": "git", "url": "git+https://github.com/freeappstore-online/agentcoder.git" },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
   "scripts": {
     "dev": "pnpm --filter @agentcoder/web dev",
     "build": "pnpm --filter @agentcoder/web build",
