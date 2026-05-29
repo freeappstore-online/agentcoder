@@ -15,7 +15,6 @@
     "build:bridge": "pnpm --filter agentcoder-bridge build",
     "preview": "pnpm --filter @agentcoder/web preview",
     "typecheck": "pnpm --filter @agentcoder/web exec tsc -b",
-    "test": "pnpm --filter @agentcoder/web exec tsc -b",
-    "postinstall": "cd bridge && npm run build"
+    "test": "pnpm --filter @agentcoder/web exec tsc -b"
   }
 }
