@@ -78,9 +78,10 @@ interface StatusBarProps {
   bridgeOnline: boolean
   agents: string[]
   agentStates: Record<string, AgentState>
+  onDisconnect: () => void
 }
 
-function StatusBar({ connected, bridgeOnline, agents, agentStates }: StatusBarProps) {
+function StatusBar({ connected, bridgeOnline, agents, agentStates, onDisconnect }: StatusBarProps) {
   const activeAgent = agents[0]
   const agentState = activeAgent ? agentStates[activeAgent] : undefined
 
@@ -104,7 +105,13 @@ function StatusBar({ connected, bridgeOnline, agents, agentStates }: StatusBarPr
           )}
         </span>
       )}
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-2">
+        <button
+          onClick={onDisconnect}
+          className="rounded px-2 py-0.5 text-xs text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--bg)] transition-colors"
+        >
+          Disconnect
+        </button>
         <ProfileMenu app={fas} />
       </div>
     </div>
@@ -335,7 +342,7 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
   )
 }
 
-function SessionView({ room }: { room: Room }) {
+function SessionView({ room, onDisconnect }: { room: Room; onDisconnect: () => void }) {
   const bridge = useBridge(room)
 
   return (
@@ -345,6 +352,7 @@ function SessionView({ room }: { room: Room }) {
         bridgeOnline={bridge.bridgeOnline}
         agents={bridge.agents}
         agentStates={bridge.agentStates}
+        onDisconnect={onDisconnect}
       />
       <TranslationPanel
         bridgeOnline={bridge.bridgeOnline}
@@ -472,10 +480,18 @@ export default function App() {
     return <CliAuthFlow />
   }
 
+  const disconnect = useCallback(() => {
+    if (room) {
+      room.close()
+      setRoom(null)
+      localStorage.removeItem('ac:session')
+    }
+  }, [room])
+
   return (
     <div className="flex min-h-[100dvh] flex-col">
       {room ? (
-        <SessionView room={room} />
+        <SessionView room={room} onDisconnect={disconnect} />
       ) : (
         <>
           <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2 sticky top-0 z-50">
