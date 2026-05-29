@@ -367,12 +367,8 @@ function SessionView({ room, onDisconnect }: { room: Room; onDisconnect: () => v
 function CliAuthFlow() {
   const params = new URLSearchParams(window.location.search)
   const port = params.get('port') || '19283'
-  const redirected = useRef(false)
 
   useEffect(() => {
-    if (redirected.current) return
-    redirected.current = true
-
     const token = fas.auth.token
     if (!token) return
 
@@ -398,6 +394,14 @@ export default function App() {
   const [room, setRoom] = useState<Room | null>(null)
 
   const isCliAuth = new URLSearchParams(window.location.search).has('cli_auth')
+
+  const disconnect = useCallback(() => {
+    if (room) {
+      room.close()
+      setRoom(null)
+      localStorage.removeItem('ac:session')
+    }
+  }, [room])
 
   // Auto-reconnect to last session
   useEffect(() => {
@@ -436,14 +440,6 @@ export default function App() {
   if (isCliAuth) {
     return <CliAuthFlow />
   }
-
-  const disconnect = useCallback(() => {
-    if (room) {
-      room.close()
-      setRoom(null)
-      localStorage.removeItem('ac:session')
-    }
-  }, [room])
 
   return (
     <div className="flex min-h-[100dvh] flex-col">
