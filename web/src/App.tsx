@@ -96,6 +96,7 @@ function ConnectBridge({ onRoom }: { onRoom: (room: Room) => void }) {
 }
 
 interface StatusBarProps {
+  sessionId: string
   connected: boolean
   bridgeOnline: boolean
   agents: string[]
@@ -104,12 +105,13 @@ interface StatusBarProps {
   onSettings: () => void
 }
 
-function StatusBar({ connected, bridgeOnline, agents, agentStates, onDisconnect, onSettings }: StatusBarProps) {
+function StatusBar({ sessionId, connected, bridgeOnline, agents, agentStates, onDisconnect, onSettings }: StatusBarProps) {
   const activeAgent = agents[0]
   const agentState = activeAgent ? agentStates[activeAgent] : undefined
 
   return (
     <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm sticky top-0 z-50">
+      <span className="font-mono text-xs text-[var(--muted)]">{sessionId}</span>
       <span className={`inline-flex items-center gap-1.5 ${connected ? 'text-emerald-500' : 'text-[var(--muted)]'}`}>
         <span className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-emerald-500' : 'bg-[var(--muted)]'}`} />
         {connected ? 'Connected' : 'Offline'}
@@ -225,11 +227,14 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
       <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={outputRef}>
         {!bridgeOnline && (
           <Card>
-            <div className="text-center py-4">
+            <div className="text-center py-4 space-y-3">
               <p className="text-sm font-medium text-[var(--ink)]">Bridge not connected</p>
-              <p className="mt-1 text-xs text-[var(--muted)]">
-                Start the bridge on your machine to begin monitoring your AI agent sessions.
+              <p className="text-xs text-[var(--muted)]">
+                Run this on your machine to connect:
               </p>
+              <div className="text-sm font-mono bg-[var(--bg)] rounded-lg p-3 text-left">
+                <CopyLine text={`npx github:freeappstore-online/agentcoder start --session ${localStorage.getItem('ac:session') ?? ''}`} />
+              </div>
             </div>
           </Card>
         )}
@@ -386,12 +391,13 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
   )
 }
 
-function SessionView({ room, onDisconnect, onSettings }: { room: Room; onDisconnect: () => void; onSettings: () => void }) {
+function SessionView({ sessionId, room, onDisconnect, onSettings }: { sessionId: string; room: Room; onDisconnect: () => void; onSettings: () => void }) {
   const bridge = useBridge(room)
 
   return (
     <>
       <StatusBar
+        sessionId={sessionId}
         connected={bridge.connected}
         bridgeOnline={bridge.bridgeOnline}
         agents={bridge.agents}
@@ -500,7 +506,7 @@ export default function App() {
   return (
     <div className="flex min-h-[100dvh] flex-col">
       {room ? (
-        <SessionView room={room} onDisconnect={disconnect} onSettings={() => setPage('profile')} />
+        <SessionView sessionId={localStorage.getItem('ac:session') ?? ''} room={room} onDisconnect={disconnect} onSettings={() => setPage('profile')} />
       ) : (
         <>
           <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2 sticky top-0 z-50">
