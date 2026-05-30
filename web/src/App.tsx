@@ -7,6 +7,7 @@ import { useBridge } from './use-bridge'
 import { useTranslator } from './use-translator'
 import type { Room } from '@freeappstore/sdk'
 import { TerminalView } from './terminal-view'
+import { ProfilePage } from './profile-page'
 import type { AgentState, UIMessage } from './types'
 
 const fas = initApp({ appId: 'agentcoder' })
@@ -100,9 +101,10 @@ interface StatusBarProps {
   agents: string[]
   agentStates: Record<string, AgentState>
   onDisconnect: () => void
+  onSettings: () => void
 }
 
-function StatusBar({ connected, bridgeOnline, agents, agentStates, onDisconnect }: StatusBarProps) {
+function StatusBar({ connected, bridgeOnline, agents, agentStates, onDisconnect, onSettings }: StatusBarProps) {
   const activeAgent = agents[0]
   const agentState = activeAgent ? agentStates[activeAgent] : undefined
 
@@ -128,6 +130,12 @@ function StatusBar({ connected, bridgeOnline, agents, agentStates, onDisconnect 
       )}
       <div className="ml-auto flex items-center gap-2">
         <button
+          onClick={onSettings}
+          className="rounded px-2 py-0.5 text-sm text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--bg)] transition-colors"
+        >
+          Settings
+        </button>
+        <button
           onClick={onDisconnect}
           className="rounded px-2 py-0.5 text-sm text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--bg)] transition-colors"
         >
@@ -152,8 +160,14 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
   const [input, setInput] = useState('')
   const [composedPreview, setComposedPreview] = useState<string | null>(null)
   const [needsKey, setNeedsKey] = useState(true)
+  const [prefs, setPrefs] = useState({ autoTranslate: true, translateDebounce: 3 })
   const lastTranslatedLen = useRef(0)
   const outputRef = useRef<HTMLDivElement>(null)
+
+  // Load prefs from KV
+  useEffect(() => {
+    fas.kv.get<typeof prefs>('prefs').then((p) => { if (p) setPrefs(p) }).catch(() => {})
+  }, [])
 
   // Check if user has an API key for translation (re-check on window focus for after key setup)
   useEffect(() => {
@@ -166,14 +180,14 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
   // Auto-translate when new output accumulates (debounced)
   useEffect(() => {
     if (outputBuffer.length <= lastTranslatedLen.current) return
-    if (needsKey) return
+    if (needsKey || !prefs.autoTranslate) return
     const timer = setTimeout(() => {
       const newContent = outputBuffer.slice(lastTranslatedLen.current)
       if (newContent.trim().length > 50) {
         translate(outputBuffer)
         lastTranslatedLen.current = outputBuffer.length
       }
-    }, 3000)
+    }, prefs.translateDebounce * 1000)
     return () => clearTimeout(timer)
   }, [outputBuffer, translate, needsKey])
 
@@ -372,7 +386,7 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
   )
 }
 
-function SessionView({ room, onDisconnect }: { room: Room; onDisconnect: () => void }) {
+function SessionView({ room, onDisconnect, onSettings }: { room: Room; onDisconnect: () => void; onSettings: () => void }) {
   const bridge = useBridge(room)
 
   return (
@@ -383,6 +397,7 @@ function SessionView({ room, onDisconnect }: { room: Room; onDisconnect: () => v
         agents={bridge.agents}
         agentStates={bridge.agentStates}
         onDisconnect={onDisconnect}
+        onSettings={onSettings}
       />
       <TranslationPanel
         bridgeOnline={bridge.bridgeOnline}
@@ -422,6 +437,7 @@ function CliAuthFlow() {
 export default function App() {
   const { user, loading } = useAuth(fas)
   const [room, setRoom] = useState<Room | null>(null)
+  const [page, setPage] = useState<'main' | 'profile'>('main')
 
   const isCliAuth = new URLSearchParams(window.location.search).has('cli_auth')
 
@@ -471,15 +487,33 @@ export default function App() {
     return <CliAuthFlow />
   }
 
+  if (page === 'profile') {
+    return (
+      <div className="flex min-h-[100dvh] flex-col">
+        <ProfilePage app={fas} user={user} onBack={() => setPage('main')} />
+        <Footer />
+        <BuildInfo />
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-[100dvh] flex-col">
       {room ? (
-        <SessionView room={room} onDisconnect={disconnect} />
+        <SessionView room={room} onDisconnect={disconnect} onSettings={() => setPage('profile')} />
       ) : (
         <>
           <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2 sticky top-0 z-50">
             <span className="text-sm font-semibold text-[var(--ink)]">AgentCoder</span>
-            <ProfileMenu app={fas} />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage('profile')}
+                className="rounded px-2 py-0.5 text-sm text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--bg)] transition-colors"
+              >
+                Settings
+              </button>
+              <ProfileMenu app={fas} />
+            </div>
           </div>
           <main className="flex flex-1 flex-col">
             <ConnectBridge onRoom={setRoom} />
