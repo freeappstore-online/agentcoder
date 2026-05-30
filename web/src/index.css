@@ -61,16 +61,16 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --paper: #000000;
-  --paper-deep: #0a0a0a;
+  --paper: #0a0a0a;
+  --paper-deep: #111111;
   --ink: #f0f0f0;
   --muted: #888888;
   --line: rgba(255, 255, 255, 0.08);
   --line-strong: rgba(255, 255, 255, 0.14);
-  --panel: rgba(18, 18, 18, 0.8);
-  --panel-strong: rgba(18, 18, 18, 0.92);
-  --panel-quiet: rgba(22, 22, 22, 0.8);
-  --dock: #0a0a0a;
+  --panel: rgba(24, 24, 24, 0.9);
+  --panel-strong: rgba(28, 28, 28, 0.95);
+  --panel-quiet: rgba(20, 20, 20, 0.85);
+  --dock: #111111;
   --glass-soft: rgba(30, 30, 30, 0.6);
   --glass: rgba(26, 26, 26, 0.8);
   --glass-hover: rgba(38, 38, 38, 0.9);
@@ -91,9 +91,9 @@
   --warm-gradient: linear-gradient(180deg, rgba(14, 14, 14, 0.96), rgba(59, 33, 25, 0.34));
   --cool-gradient: linear-gradient(180deg, rgba(14, 14, 14, 0.96), rgba(18, 38, 50, 0.3));
   --mint-gradient: linear-gradient(180deg, rgba(14, 14, 14, 0.96), rgba(19, 40, 26, 0.28));
-  --card-gradient: linear-gradient(180deg, #141414, #1a1a1a);
-  --bg-start: #000000;
-  --bg-mid: #050505;
+  --card-gradient: linear-gradient(180deg, #1a1a1a, #141414);
+  --bg-start: #0a0a0a;
+  --bg-mid: #0a0a0a;
   --bg-end: #0a0a0a;
   --glow-warm: rgba(255, 155, 118, 0.07);
   --glow-cool: rgba(137, 203, 229, 0.06);
