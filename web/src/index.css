@@ -101,6 +101,12 @@
   --bg-blob-2: rgba(137, 203, 229, 0.05);
   --shadow-soft: 0 28px 70px rgba(0, 0, 0, 0.6);
   --shadow-card: 0 12px 28px rgba(0, 0, 0, 0.4);
+
+  /* Override SDK tokens for dark contrast */
+  --bg: #0a0a0a;
+  --surface: #161616;
+  --surface-2: #1a1a1a;
+  --border: rgba(255, 255, 255, 0.1);
 }
 
 html {
