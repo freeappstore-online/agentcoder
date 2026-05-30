@@ -213,11 +213,25 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
     setComposedPreview(null)
   }, [composedPreview, input, agents, send])
 
+  const handleDirectSend = useCallback(() => {
+    if (!input.trim() || !agents[0]) return
+    send({ type: 'command', agent: agents[0], session: '', text: input })
+    setInput('')
+    setComposedPreview(null)
+  }, [input, agents, send])
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (composedPreview) handleSend()
-      else handleCompose()
+      if (e.metaKey || e.ctrlKey) {
+        // Cmd+Enter = AI compose
+        if (composedPreview) handleSend()
+        else handleCompose()
+      } else {
+        // Enter = send directly
+        if (composedPreview) handleSend()
+        else handleDirectSend()
+      }
     }
   }
 
@@ -365,12 +379,12 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
           </div>
           <div className="flex flex-col gap-1">
             <button
-              onClick={handleCompose}
-              disabled={!input.trim() || !bridgeOnline}
-              className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--ink)] hover:bg-[var(--surface)] disabled:opacity-30"
-              title="Compose (Cmd+Enter)"
+              onClick={composedPreview ? handleSend : handleDirectSend}
+              disabled={!input.trim() && !composedPreview || !bridgeOnline}
+              className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-30"
+              title="Send (Enter)"
             >
-              Compose
+              Send
             </button>
             <button
               onClick={() => {
@@ -384,7 +398,7 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
           </div>
         </div>
         <p className="mt-1 text-[10px] text-[var(--muted)]">
-          Type or speak what you want in plain English. Compose converts it to the right terminal command.
+          Enter to send directly. Cmd+Enter to AI-compose into a terminal command.
         </p>
       </div>
     </div>
