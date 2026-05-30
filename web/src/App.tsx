@@ -160,7 +160,6 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
   const { translating, lastTranslation, error, translate, compose } = useTranslator(fas)
   const voice = useVoiceInput()
   const [input, setInput] = useState('')
-  const [composedPreview, setComposedPreview] = useState<string | null>(null)
   const [needsKey, setNeedsKey] = useState(true)
   const [prefs, setPrefs] = useState({ autoTranslate: true, translateDebounce: 3 })
   const lastTranslatedLen = useRef(0)
@@ -198,39 +197,29 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
     lastTranslatedLen.current = outputBuffer.length
   }
 
-  const handleCompose = async () => {
-    if (!input.trim()) return
-    const context = lastTranslation?.summary ?? 'No context available'
-    const composed = await compose(input, context)
-    setComposedPreview(composed)
-  }
-
   const handleSend = useCallback(() => {
-    const text = composedPreview ?? input
-    if (!text.trim() || !agents[0]) return
-    send({ type: 'command', agent: agents[0], session: '', text })
-    setInput('')
-    setComposedPreview(null)
-  }, [composedPreview, input, agents, send])
-
-  const handleDirectSend = useCallback(() => {
     if (!input.trim() || !agents[0]) return
     send({ type: 'command', agent: agents[0], session: '', text: input })
     setInput('')
-    setComposedPreview(null)
   }, [input, agents, send])
+
+  const handleCompose = async () => {
+    if (!input.trim() || !agents[0]) return
+    const context = lastTranslation?.summary ?? 'No context available'
+    const composed = await compose(input, context)
+    if (composed.trim()) {
+      send({ type: 'command', agent: agents[0], session: '', text: composed })
+      setInput('')
+    }
+  }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       if (e.metaKey || e.ctrlKey) {
-        // Cmd+Enter = AI compose
-        if (composedPreview) handleSend()
-        else handleCompose()
+        handleCompose()
       } else {
-        // Enter = send directly
-        if (composedPreview) handleSend()
-        else handleDirectSend()
+        handleSend()
       }
     }
   }
@@ -345,42 +334,22 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
       {/* Raw terminal output */}
       <TerminalView output={outputBuffer} />
 
-      {/* Compose bar */}
+      {/* Input bar */}
       <div className="border-t border-[var(--border)] p-3">
-        {composedPreview && (
-          <div className="mb-2 rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30 p-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-medium text-blue-800 dark:text-blue-200">Will send to terminal:</span>
-              <button
-                onClick={() => setComposedPreview(null)}
-                className="text-xs text-blue-600 hover:text-blue-800"
-              >
-                Edit
-              </button>
-            </div>
-            <pre className="text-xs font-mono text-blue-700 dark:text-blue-300 whitespace-pre-wrap">{composedPreview}</pre>
-            <button
-              onClick={handleSend}
-              className="mt-2 w-full rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-            >
-              Send to agent
-            </button>
-          </div>
-        )}
         <div className="flex gap-2">
           <div className="flex-1" onKeyDown={handleKeyDown}>
             <VoiceTextArea
               value={input}
               onChange={setInput}
               voice={voice}
-              placeholder={bridgeOnline ? "Tell your agent what to do (type or speak)..." : "Connect bridge first..."}
+              placeholder={bridgeOnline ? "Type a message for your agent..." : "Connect bridge first..."}
               disabled={!bridgeOnline}
             />
           </div>
           <div className="flex flex-col gap-1">
             <button
-              onClick={composedPreview ? handleSend : handleDirectSend}
-              disabled={!input.trim() && !composedPreview || !bridgeOnline}
+              onClick={handleSend}
+              disabled={!input.trim() || !bridgeOnline}
               className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-30"
               title="Send (Enter)"
             >
@@ -398,7 +367,7 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
           </div>
         </div>
         <p className="mt-1 text-[10px] text-[var(--muted)]">
-          Enter to send directly. Cmd+Enter to AI-compose into a terminal command.
+          Enter to send. Cmd+Enter to AI-rewrite first. Shift+Enter for newline.
         </p>
       </div>
     </div>
