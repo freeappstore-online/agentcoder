@@ -11,7 +11,7 @@ import { execFile } from 'child_process'
 const CONFIG_DIR = join(homedir(), '.agentcoder')
 const CREDS_FILE = join(CONFIG_DIR, 'credentials.json')
 const CLI_AUTH_PORT = 19283
-const APP_URL = 'https://agentcoder.freeappstore.online'
+const APP_URL = 'https://agentcoder.space'
 
 interface Credentials {
   token: string

@@ -77,6 +77,7 @@ var Tui = class {
     this.state.peers = peers;
     this.render();
   }
+  started = false;
   /** Register all discovered sessions (from tmux.listSessions) */
   discoverSessions(names) {
     let added = false;
@@ -92,7 +93,7 @@ var Tui = class {
         added = true;
       }
     }
-    if (added && !this.hasAnyWatched() && !this.picking) {
+    if (added && this.started && !this.hasAnyWatched() && !this.picking) {
       this.openPicker();
     }
   }
@@ -150,6 +151,13 @@ var Tui = class {
     this.onWatchChanged = onWatchChanged;
     this.getWindows = getWindows ?? null;
     process.stdout.write(HIDE_CURSOR);
+    if (process.stdin.isTTY) {
+      readline.emitKeypressEvents(process.stdin);
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdin.on("keypress", this.onKeypress);
+    }
+    this.started = true;
     if (!this.hasAnyWatched() && this.state.sessions.size > 0) {
       this.openPicker();
     }
@@ -157,12 +165,6 @@ var Tui = class {
     this.renderTimer = setInterval(() => this.render(), 1e3);
     return new Promise((resolve) => {
       this.actionResolve = resolve;
-      if (process.stdin.isTTY) {
-        readline.emitKeypressEvents(process.stdin);
-        process.stdin.setRawMode(true);
-        process.stdin.resume();
-        process.stdin.on("keypress", this.onKeypress);
-      }
     });
   }
   stop() {
@@ -400,7 +402,7 @@ import { execFile } from "child_process";
 var CONFIG_DIR = join(homedir(), ".agentcoder");
 var CREDS_FILE = join(CONFIG_DIR, "credentials.json");
 var CLI_AUTH_PORT = 19283;
-var APP_URL = "https://agentcoder.freeappstore.online";
+var APP_URL = "https://agentcoder.space";
 function loadCredentials() {
   if (!existsSync(CREDS_FILE)) return null;
   try {
