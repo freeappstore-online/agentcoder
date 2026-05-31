@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { detectState, extractResponse } from './tmux.js'
+import { detectState, extractResponse, isTmuxAvailable } from './tmux.js'
+
+describe('isTmuxAvailable', () => {
+  it('returns true when tmux is installed', () => {
+    // tmux is installed on this machine (macOS dev environment)
+    expect(isTmuxAvailable()).toBe(true)
+  })
+})
 
 describe('detectState', () => {
   it('detects Claude ready state from ❯ prompt', () => {

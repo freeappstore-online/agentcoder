@@ -1,5 +1,8 @@
 import { execFileSync } from 'child_process'
 
+const TMUX_CMD_TIMEOUT_MS = 5000
+const SESSION_CHECK_TIMEOUT_MS = 3000
+
 /** Strip ANSI escape codes from terminal output */
 function stripAnsi(str: string): string {
   return str.replace(
@@ -8,10 +11,20 @@ function stripAnsi(str: string): string {
   )
 }
 
+/** Check if tmux is installed and reachable */
+export function isTmuxAvailable(): boolean {
+  try {
+    execFileSync('tmux', ['-V'], { encoding: 'utf-8', timeout: SESSION_CHECK_TIMEOUT_MS, stdio: 'pipe' })
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Run a tmux command and return stdout (safe — no shell interpolation) */
 function tmux(...args: string[]): string {
   try {
-    return execFileSync('tmux', args, { encoding: 'utf-8', timeout: 5000 })
+    return execFileSync('tmux', args, { encoding: 'utf-8', timeout: TMUX_CMD_TIMEOUT_MS })
   } catch {
     return ''
   }
@@ -24,13 +37,13 @@ function tmux(...args: string[]): string {
  */
 export function getTarget(sessionName: string): string {
   // List panes for this session only (no -a flag)
-  const output = tmux(
+  const paneLines = tmux(
     'list-panes', '-t', sessionName, '-s',
     '-F', '#{session_name}:#{window_index}.#{pane_index} #{window_name} #{pane_title}',
   )
-  if (!output.trim()) return sessionName
+  if (!paneLines.trim()) return sessionName
 
-  const lines = output.trim().split('\n')
+  const lines = paneLines.trim().split('\n')
   for (const line of lines) {
     const lower = line.toLowerCase()
     // Match Claude Code by pane title or window name
@@ -55,16 +68,16 @@ export interface TmuxWindow {
 
 /** List all windows/panes for a session */
 export function listWindows(sessionName: string): TmuxWindow[] {
-  const output = tmux(
+  const paneLines = tmux(
     'list-panes', '-t', sessionName, '-s',
     '-F', '#{session_name}:#{window_index}.#{pane_index}\t#{window_index}\t#{window_name}\t#{pane_title}',
   )
-  if (!output.trim()) return []
+  if (!paneLines.trim()) return []
 
   const seen = new Set<number>()
   const windows: TmuxWindow[] = []
 
-  for (const line of output.trim().split('\n')) {
+  for (const line of paneLines.trim().split('\n')) {
     const [target, idxStr, windowName, paneTitle] = line.split('\t')
     if (!target) continue
     const windowIndex = parseInt(idxStr ?? '0', 10)
@@ -88,7 +101,7 @@ export function listWindows(sessionName: string): TmuxWindow[] {
 /** Check if a tmux session exists */
 export function sessionExists(name: string): boolean {
   try {
-    execFileSync('tmux', ['has-session', '-t', name], { timeout: 3000, stdio: 'pipe' })
+    execFileSync('tmux', ['has-session', '-t', name], { timeout: SESSION_CHECK_TIMEOUT_MS, stdio: 'pipe' })
     return true
   } catch {
     return false
@@ -97,8 +110,8 @@ export function sessionExists(name: string): boolean {
 
 /** List all tmux sessions */
 export function listSessions(): string[] {
-  const output = tmux('list-sessions', '-F', '#{session_name}')
-  return output.trim().split('\n').filter(Boolean)
+  const sessionList = tmux('list-sessions', '-F', '#{session_name}')
+  return sessionList.trim().split('\n').filter(Boolean)
 }
 
 /**
@@ -156,7 +169,7 @@ function isClaudeProcessing(screen: string): boolean {
   return /Working|Thinking|Reading|Searching|Running|Editing|Writing/.test(screen)
 }
 
-export type AgentState = 'ready' | 'busy' | 'waiting'
+type AgentState = 'ready' | 'busy' | 'waiting'
 
 /** Detect agent state from screen content */
 export function detectState(screen: string): AgentState {

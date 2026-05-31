@@ -105,6 +105,13 @@ export class Tui {
     this.render()
   }
 
+  setError(reason: string): void {
+    // Fatal error — stop the TUI and print the error
+    this.stop()
+    process.stderr.write(`\n${c(RED + BOLD, 'Error:')} ${reason}\n\n`)
+    this.actionResolve?.('quit')
+  }
+
   setPeers(peers: string[]): void {
     this.state.peers = peers
     this.render()
@@ -169,11 +176,11 @@ export class Tui {
 
   /** Returns map of session name → explicit target (or undefined for auto-detect) */
   getWatchedMap(): Map<string, string | undefined> {
-    const map = new Map<string, string | undefined>()
+    const watched = new Map<string, string | undefined>()
     for (const s of this.state.sessions.values()) {
-      if (s.watched) map.set(s.name, s.target)
+      if (s.watched) watched.set(s.name, s.target)
     }
-    return map
+    return watched
   }
 
   getWatched(): string[] {
@@ -309,9 +316,9 @@ export class Tui {
       this.pickerCursor = (this.pickerCursor + 1) % total
     } else if (ch === 'right') {
       // Expand session to show windows
-      const item = this.pickerItems[this.pickerCursor]
-      if (item && !item.indent) {
-        this.expanded = this.expanded === item.key ? null : item.key
+      const cursorEntry = this.pickerItems[this.pickerCursor]
+      if (cursorEntry && !cursorEntry.indent) {
+        this.expanded = this.expanded === cursorEntry.key ? null : cursorEntry.key
         this.rebuildPickerItems()
       }
     } else if (ch === 'left') {
@@ -321,11 +328,11 @@ export class Tui {
         this.rebuildPickerItems()
       }
     } else if (ch === 'space') {
-      const item = this.pickerItems[this.pickerCursor]
-      if (!item) return
-      if (item.indent) {
+      const selectedEntry = this.pickerItems[this.pickerCursor]
+      if (!selectedEntry) return
+      if (selectedEntry.indent) {
         // Window item — set explicit target on the session
-        const [sessionName, target] = item.key.split('=')
+        const [sessionName, target] = selectedEntry.key.split('=')
         const session = this.state.sessions.get(sessionName!)
         if (session) {
           session.watched = true
@@ -333,7 +340,7 @@ export class Tui {
         }
       } else {
         // Session item — toggle watch (auto-detect pane)
-        const session = this.state.sessions.get(item.key)
+        const session = this.state.sessions.get(selectedEntry.key)
         if (session) {
           session.watched = !session.watched
           if (!session.watched) session.target = undefined
@@ -375,25 +382,25 @@ export class Tui {
     lines.push('')
 
     for (let i = 0; i < this.pickerItems.length; i++) {
-      const item = this.pickerItems[i]!
+      const pickerEntry = this.pickerItems[i]!
       const isCursor = i === this.pickerCursor
 
-      if (item.indent) {
+      if (pickerEntry.indent) {
         // Window sub-item
         const prefix = '    '
-        const marker = item.isClaude ? c(GREEN, '✳') : c(DIM, '·')
+        const marker = pickerEntry.isClaude ? c(GREEN, '✳') : c(DIM, '·')
         const label = isCursor
-          ? c(INVERSE + WHITE, ` ${item.label} `)
-          : c(GRAY, ` ${item.label}`)
+          ? c(INVERSE + WHITE, ` ${pickerEntry.label} `)
+          : c(GRAY, ` ${pickerEntry.label}`)
         lines.push(`${prefix}${marker} ${label}`)
       } else {
         // Session item
-        const session = this.state.sessions.get(item.key)!
+        const session = this.state.sessions.get(pickerEntry.key)!
         const check = session.watched ? c(GREEN, '◉') : c(DIM, '○')
-        const arrow = this.expanded === item.key ? c(DIM, '▼') : c(DIM, '▸')
+        const arrow = this.expanded === pickerEntry.key ? c(DIM, '▼') : c(DIM, '▸')
         const label = isCursor
-          ? c(INVERSE + WHITE, ` ${item.label} `)
-          : c(WHITE, ` ${item.label}`)
+          ? c(INVERSE + WHITE, ` ${pickerEntry.label} `)
+          : c(WHITE, ` ${pickerEntry.label}`)
         const targetHint = session.target ? c(DIM, ` → ${session.target}`) : ''
         lines.push(`  ${check} ${arrow}${label}${targetHint}`)
       }
@@ -494,7 +501,7 @@ export class Tui {
   }
 }
 
-function formatUptime(ms: number): string {
+export function formatUptime(ms: number): string {
   const s = Math.floor(ms / 1000)
   if (s < 60) return `${s}s`
   const m = Math.floor(s / 60)
@@ -503,14 +510,14 @@ function formatUptime(ms: number): string {
   return `${h}h ${m % 60}m`
 }
 
-function formatAge(ms: number): string {
+export function formatAge(ms: number): string {
   if (ms < 1000) return 'now'
   const s = Math.floor(ms / 1000)
   if (s < 60) return `${s}s ago`
   return `${Math.floor(s / 60)}m ago`
 }
 
-function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`

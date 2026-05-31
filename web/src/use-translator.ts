@@ -24,6 +24,21 @@ interface TranslatorState {
   error: string | null
 }
 
+export function callAnthropicApi(app: FreeAppStore, body: object, signal?: AbortSignal) {
+  return app.proxy.fetch(
+    'api.anthropic.com/v1/messages',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(body),
+      signal,
+    },
+  )
+}
+
 export function useTranslator(app: FreeAppStore | null) {
   const [state, setState] = useState<TranslatorState>({
     translating: false,
@@ -50,46 +65,35 @@ export function useTranslator(app: FreeAppStore | null) {
             ? terminalOutput.slice(-100_000)
             : terminalOutput
 
-        const res = await app.proxy.fetch(
-          'api.anthropic.com/v1/messages',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'anthropic-version': '2023-06-01',
+        const response = await callAnthropicApi(app, {
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1024,
+          messages: [
+            {
+              role: 'user',
+              content: TRANSLATE_PROMPT + truncated,
             },
-            body: JSON.stringify({
-              model: 'claude-haiku-4-5-20251001',
-              max_tokens: 1024,
-              messages: [
-                {
-                  role: 'user',
-                  content: TRANSLATE_PROMPT + truncated,
-                },
-              ],
-            }),
-            signal: controller.signal,
-          },
-        )
+          ],
+        }, controller.signal)
 
-        if (!res.ok) {
-          const text = await res.text()
-          throw new Error(`Translation failed: ${res.status} ${text}`)
+        if (!response.ok) {
+          const errorText = await response.text()
+          throw new Error(`Translation failed: ${response.status} ${errorText}`)
         }
 
-        const body = await res.json() as {
+        const apiBody = await response.json() as {
           content: Array<{ type: string; text: string }>
         }
-        const text = body.content?.[0]?.text ?? ''
+        const text = apiBody.content?.[0]?.text ?? ''
 
-        const result = parseTranslation(text)
-        setState({ translating: false, lastTranslation: result, error: null })
-      } catch (e) {
-        if ((e as Error).name === 'AbortError') return
+        const parsed = parseTranslation(text)
+        setState({ translating: false, lastTranslation: parsed, error: null })
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return
         setState((prev) => ({
           ...prev,
           translating: false,
-          error: (e as Error).message,
+          error: (err as Error).message,
         }))
       }
     },
@@ -101,42 +105,32 @@ export function useTranslator(app: FreeAppStore | null) {
       if (!app) return userIntent
 
       try {
-        const res = await app.proxy.fetch(
-          'api.anthropic.com/v1/messages',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'anthropic-version': '2023-06-01',
+        const response = await callAnthropicApi(app, {
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 256,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                'You are helping a developer respond to an AI coding agent running in their terminal.',
+                '',
+                'Agent context:',
+                context,
+                '',
+                'Developer intent:',
+                userIntent,
+                '',
+                'Convert the developer intent into the exact text to send to the terminal. Be concise and direct. Output ONLY the text to send, nothing else.',
+              ].join('\n'),
             },
-            body: JSON.stringify({
-              model: 'claude-haiku-4-5-20251001',
-              max_tokens: 256,
-              messages: [
-                {
-                  role: 'user',
-                  content: [
-                    'You are helping a developer respond to an AI coding agent running in their terminal.',
-                    '',
-                    'Agent context:',
-                    context,
-                    '',
-                    'Developer intent:',
-                    userIntent,
-                    '',
-                    'Convert the developer intent into the exact text to send to the terminal. Be concise and direct. Output ONLY the text to send, nothing else.',
-                  ].join('\n'),
-                },
-              ],
-            }),
-          },
-        )
+          ],
+        })
 
-        if (!res.ok) return userIntent
-        const body = await res.json() as {
+        if (!response.ok) return userIntent
+        const apiBody = await response.json() as {
           content: Array<{ type: string; text: string }>
         }
-        return body.content?.[0]?.text?.trim() ?? userIntent
+        return apiBody.content?.[0]?.text?.trim() ?? userIntent
       } catch {
         return userIntent
       }

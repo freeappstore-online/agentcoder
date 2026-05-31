@@ -1,99 +1,15 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { initApp } from '@freeappstore/sdk'
-import { SignInButton, ProfileMenu, BuildInfo, Spinner, KeyPrompt, Card, Footer } from '@freeappstore/sdk/ui'
-import { VoiceTextArea } from '@freeappstore/sdk/ui'
-import { useAuth, useVoiceInput } from '@freeappstore/sdk/hooks'
+import { SignInButton, ProfileMenu, BuildInfo, Spinner, Card, Footer } from '@freeappstore/sdk/ui'
+import { useAuth } from '@freeappstore/sdk/hooks'
 import { useBridge } from './use-bridge'
-import { useTranslator } from './use-translator'
+import { TranslationPanel } from './TranslationPanel'
 import type { Room } from '@freeappstore/sdk'
-import { TerminalView } from './terminal-view'
-import { ProfilePage } from './profile-page'
-import type { AgentState, UIMessage } from './types'
+import { ConnectBridge } from './ConnectBridge'
+import { ProfilePage } from './ProfilePage'
+import type { AgentState } from './types'
 
 const fas = initApp({ appId: 'agentcoder' })
-
-function CopyLine({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-  const copy = () => {
-    navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
-  return (
-    <div className="flex items-start justify-between gap-2 group">
-      <p className="text-[var(--muted)] break-all">{text}</p>
-      <button
-        onClick={copy}
-        className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-[var(--muted)] hover:bg-[var(--surface)] transition-all"
-      >
-        {copied ? 'Copied' : 'Copy'}
-      </button>
-    </div>
-  )
-}
-
-function ConnectBridge({ onRoom }: { onRoom: (room: Room) => void }) {
-  const [sessionId, setSessionId] = useState(() => {
-    return localStorage.getItem('ac:session') || crypto.randomUUID().slice(0, 8)
-  })
-
-  const connect = () => {
-    localStorage.setItem('ac:session', sessionId)
-    const room = fas.rooms.join(sessionId)
-    onRoom(room)
-  }
-
-  return (
-    <div className="flex flex-1 items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-6">
-        <div className="text-center">
-          <h1 className="display-font text-2xl font-bold text-[var(--ink)]">AgentCoder</h1>
-          <p className="mt-2 text-[var(--muted)]">
-            AI agent interpreter — understand what your coding agent did
-          </p>
-        </div>
-
-        <Card>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-[var(--ink)] mb-1">Session ID</label>
-              <input
-                type="text"
-                value={sessionId}
-                onChange={(e) => setSessionId(e.target.value)}
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-[var(--ink)] text-sm font-mono"
-                placeholder="my-session"
-              />
-              <p className="mt-1 text-xs text-[var(--muted)]">
-                Use this ID when starting your bridge
-              </p>
-            </div>
-
-            <button
-              onClick={connect}
-              className="w-full rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 transition-opacity"
-            >
-              Connect
-            </button>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="space-y-3">
-            <h3 className="text-sm font-medium text-[var(--ink)]">Setup your bridge</h3>
-            <div className="space-y-2 text-sm font-mono bg-[var(--bg)] rounded-lg p-3">
-              <CopyLine text="npx github:freeappstore-online/agentcoder login" />
-              <CopyLine text={`npx github:freeappstore-online/agentcoder start --session ${sessionId}`} />
-            </div>
-            <p className="text-xs text-[var(--muted)]">
-              The bridge runs on your machine and relays tmux sessions through this app.
-            </p>
-          </div>
-        </Card>
-      </div>
-    </div>
-  )
-}
 
 interface StatusBarProps {
   sessionId: string
@@ -149,325 +65,6 @@ function StatusBar({ sessionId, connected, bridgeOnline, agents, agentStates, on
   )
 }
 
-interface TranslationPanelProps {
-  bridgeOnline: boolean
-  selectedAgent: string | null
-  agents: string[]
-  agentStates: Record<string, import('./types').AgentState>
-  outputBuffer: string
-  onSelectAgent: (agent: string) => void
-  send: (msg: UIMessage) => void
-}
-
-function TranslationPanel({ bridgeOnline, selectedAgent, agents, agentStates, outputBuffer, onSelectAgent, send }: TranslationPanelProps) {
-  const { translating, lastTranslation, error, translate, compose } = useTranslator(fas)
-  const voice = useVoiceInput()
-  const [input, setInput] = useState('')
-  const [needsKey, setNeedsKey] = useState(true)
-  const [keyDismissed, setKeyDismissed] = useState(false)
-  const [prefs, setPrefs] = useState({ autoTranslate: true, translateDebounce: 3 })
-  const [taskCompleted, setTaskCompleted] = useState(false)
-  const lastTranslatedLen = useRef(0)
-  const prevAgentState = useRef<string | null>(null)
-  const outputRef = useRef<HTMLDivElement>(null)
-
-  // Load prefs from KV
-  useEffect(() => {
-    fas.kv.get<typeof prefs>('prefs').then((p) => { if (p) setPrefs(p) }).catch(() => {})
-  }, [])
-
-  // Check if user has an API key
-  useEffect(() => {
-    const check = () => fas.keys.has('anthropic').then((has) => setNeedsKey(!has)).catch(() => setNeedsKey(true))
-    check()
-    window.addEventListener('focus', check)
-    return () => window.removeEventListener('focus', check)
-  }, [])
-
-  // Detect task completion: busy → ready transition
-  const agentState = selectedAgent ? agentStates[selectedAgent] : undefined
-  useEffect(() => {
-    const prev = prevAgentState.current
-    prevAgentState.current = agentState ?? null
-
-    if (prev === 'busy' && agentState === 'ready') {
-      setTaskCompleted(true)
-    } else if (agentState === 'busy') {
-      setTaskCompleted(false)
-    }
-  }, [agentState])
-
-  // Auto-translate on task completion
-  useEffect(() => {
-    if (taskCompleted && !needsKey && prefs.autoTranslate && outputBuffer.trim()) {
-      translate(outputBuffer)
-      lastTranslatedLen.current = outputBuffer.length
-    }
-  }, [taskCompleted]) // eslint-disable-line -- intentionally fires once on completion
-
-  // Auto-translate when new output accumulates (debounced)
-  useEffect(() => {
-    if (outputBuffer.length <= lastTranslatedLen.current) return
-    if (needsKey || !prefs.autoTranslate) return
-    const timer = setTimeout(() => {
-      const newContent = outputBuffer.slice(lastTranslatedLen.current)
-      if (newContent.trim().length > 50) {
-        translate(outputBuffer)
-        lastTranslatedLen.current = outputBuffer.length
-      }
-    }, prefs.translateDebounce * 1000)
-    return () => clearTimeout(timer)
-  }, [outputBuffer, translate, needsKey, prefs])
-
-  const handleCatchUp = () => {
-    translate(outputBuffer)
-    lastTranslatedLen.current = outputBuffer.length
-  }
-
-  const handleSend = useCallback(() => {
-    if (!input.trim() || !selectedAgent) return
-    send({ type: 'command', agent: selectedAgent, session: '', text: input })
-    setInput('')
-  }, [input, selectedAgent, send])
-
-  const handleCompose = async () => {
-    if (!input.trim() || !selectedAgent) return
-    const context = lastTranslation?.summary ?? 'No context available'
-    const composed = await compose(input, context)
-    if (composed.trim()) {
-      send({ type: 'command', agent: selectedAgent, session: '', text: composed })
-      setInput('')
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      if (e.metaKey || e.ctrlKey) {
-        handleCompose()
-      } else {
-        handleSend()
-      }
-    }
-  }
-
-  return (
-    <div className="flex flex-1 flex-col">
-      {/* Agent tabs */}
-      {agents.length > 1 && (
-        <div className="flex gap-1 border-b border-[var(--border)] bg-[var(--bg)] px-4 py-1.5 overflow-x-auto">
-          {agents.map((agent) => {
-            const state = agentStates[agent]
-            const isActive = agent === selectedAgent
-            const dot = state === 'busy' ? 'bg-blue-500'
-              : state === 'ready' ? 'bg-emerald-500'
-              : 'bg-[var(--muted)] opacity-40'
-            return (
-              <button
-                key={agent}
-                onClick={() => onSelectAgent(agent)}
-                className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-[var(--surface)] text-[var(--ink)]'
-                    : 'text-[var(--muted)] hover:text-[var(--ink)]'
-                }`}
-              >
-                <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-                {agent}
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Translation panel */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={outputRef}>
-        {!bridgeOnline && (
-          <Card>
-            <div className="text-center py-4 space-y-3">
-              <p className="text-sm font-medium text-[var(--ink)]">Bridge not connected</p>
-              <p className="text-xs text-[var(--muted)]">
-                Run this on your machine to connect:
-              </p>
-              <div className="text-sm font-mono bg-[var(--bg)] rounded-lg p-3 text-left">
-                <CopyLine text={`npx github:freeappstore-online/agentcoder start --session ${localStorage.getItem('ac:session') ?? ''}`} />
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {bridgeOnline && outputBuffer.length === 0 && (!needsKey || keyDismissed) && (
-          <Card>
-            <p className="text-sm text-[var(--muted)] text-center py-4">
-              Bridge connected. Waiting for agent output...
-            </p>
-          </Card>
-        )}
-
-        {needsKey && bridgeOnline && !keyDismissed && (
-          <div className="relative">
-            <button
-              onClick={() => setKeyDismissed(true)}
-              className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--ink)] text-xs"
-            >
-              Dismiss
-            </button>
-            <KeyPrompt
-              app={fas}
-              provider="anthropic"
-              providerName="Anthropic"
-              message="Add your Anthropic API key to enable AI summaries. Everything else works without it."
-            />
-          </div>
-        )}
-
-        {taskCompleted && (
-          <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/30 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
-                  Task completed
-                </h3>
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
-                  {selectedAgent} finished working
-                  {lastTranslation ? '' : needsKey ? ' — add API key for summaries' : ''}
-                </p>
-              </div>
-              {needsKey && outputBuffer.length > 0 && (
-                <button
-                  onClick={() => fas.keys.manage('anthropic')}
-                  className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
-                >
-                  Add key for summary
-                </button>
-              )}
-              {!needsKey && !lastTranslation && !translating && outputBuffer.length > 0 && (
-                <button
-                  onClick={handleCatchUp}
-                  className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
-                >
-                  Summarize
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {outputBuffer.length > 0 && !lastTranslation && !translating && !needsKey && !taskCompleted && (
-          <div className="flex justify-center">
-            <button
-              onClick={handleCatchUp}
-              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
-              Catch up — summarize what happened
-            </button>
-          </div>
-        )}
-
-        {translating && (
-          <Card>
-            <div className="flex items-center justify-center gap-2 py-4">
-              <Spinner size={16} />
-              <span className="text-sm text-[var(--muted)]">Analyzing agent output...</span>
-            </div>
-          </Card>
-        )}
-
-        {error && !needsKey && (
-          <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30 p-4">
-            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-          </div>
-        )}
-
-        {lastTranslation && (
-          <div className="space-y-3">
-            <Card>
-              <div>
-                <h3 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)] mb-2">Summary</h3>
-                <p className="text-sm text-[var(--ink)] leading-relaxed">{lastTranslation.summary}</p>
-              </div>
-            </Card>
-
-            {lastTranslation.filesChanged.length > 0 && (
-              <Card>
-                <div>
-                  <h3 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)] mb-2">
-                    Files changed ({lastTranslation.filesChanged.length})
-                  </h3>
-                  <div className="space-y-1">
-                    {lastTranslation.filesChanged.map((f) => (
-                      <div key={f} className="text-sm font-mono text-[var(--ink)]">{f}</div>
-                    ))}
-                  </div>
-                </div>
-              </Card>
-            )}
-
-            {lastTranslation.pendingDecision && (
-              <div className="rounded-lg border-2 border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30 p-4">
-                <h3 className="text-sm font-medium uppercase tracking-wide text-amber-800 dark:text-amber-200 mb-2">
-                  Waiting for your input
-                </h3>
-                <p className="text-sm text-amber-700 dark:text-amber-300">{lastTranslation.pendingDecision}</p>
-              </div>
-            )}
-
-            <div className="text-xs text-[var(--muted)]">
-              Agent status: {lastTranslation.agentStatus} | Buffer: {(outputBuffer.length / 1024).toFixed(1)}KB
-            </div>
-          </div>
-        )}
-
-        {bridgeOnline && outputBuffer.length > 0 && !lastTranslation && (
-          <div className="text-xs text-[var(--muted)] text-center">
-            Receiving output... {(outputBuffer.length / 1024).toFixed(1)}KB buffered
-          </div>
-        )}
-      </div>
-
-      {/* Raw terminal output */}
-      <TerminalView output={outputBuffer} />
-
-      {/* Input bar */}
-      <div className="border-t border-[var(--border)] p-3">
-        <div className="flex gap-2">
-          <div className="flex-1" onKeyDown={handleKeyDown}>
-            <VoiceTextArea
-              value={input}
-              onChange={setInput}
-              voice={voice}
-              placeholder={bridgeOnline ? "Type a message for your agent..." : "Connect bridge first..."}
-              disabled={!bridgeOnline}
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || !bridgeOnline || !selectedAgent}
-              className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-30"
-              title="Send (Enter)"
-            >
-              Send
-            </button>
-            <button
-              onClick={() => {
-                if (selectedAgent) send({ type: 'control', action: 'interrupt', agent: selectedAgent })
-              }}
-              disabled={!bridgeOnline || !selectedAgent}
-              className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950/30 disabled:opacity-30"
-            >
-              Ctrl+C
-            </button>
-          </div>
-        </div>
-        <p className="mt-1 text-[10px] text-[var(--muted)]">
-          Enter to send. Cmd+Enter to AI-rewrite first. Shift+Enter for newline.
-        </p>
-      </div>
-    </div>
-  )
-}
-
 function SessionView({ sessionId, room, onDisconnect, onSettings }: { sessionId: string; room: Room; onDisconnect: () => void; onSettings: () => void }) {
   const bridge = useBridge(room)
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
@@ -493,7 +90,9 @@ function SessionView({ sessionId, room, onDisconnect, onSettings }: { sessionId:
         onSettings={onSettings}
       />
       <TranslationPanel
+        app={fas}
         bridgeOnline={bridge.bridgeOnline}
+        bridgeWasOnline={bridge.bridgeWasOnline}
         selectedAgent={selectedAgent}
         agents={bridge.agents}
         agentStates={bridge.agentStates}
@@ -506,8 +105,8 @@ function SessionView({ sessionId, room, onDisconnect, onSettings }: { sessionId:
 }
 
 function CliAuthFlow() {
-  const params = new URLSearchParams(window.location.search)
-  const port = params.get('port') || '19283'
+  const searchParams = new URLSearchParams(window.location.search)
+  const port = searchParams.get('port') || '19283'
 
   useEffect(() => {
     const token = fas.auth.token
@@ -550,9 +149,9 @@ export default function App() {
     if (!user || isCliAuth) return
     const lastSession = localStorage.getItem('ac:session')
     if (lastSession) {
-      const r = fas.rooms.join(lastSession)
-      setRoom(r)
-      return () => r.close()
+      const joinedRoom = fas.rooms.join(lastSession)
+      setRoom(joinedRoom)
+      return () => joinedRoom.close()
     }
   }, [user, isCliAuth])
 
@@ -612,7 +211,7 @@ export default function App() {
             </div>
           </div>
           <main className="flex flex-1 flex-col">
-            <ConnectBridge onRoom={setRoom} />
+            <ConnectBridge app={fas} onRoom={setRoom} />
           </main>
         </>
       )}

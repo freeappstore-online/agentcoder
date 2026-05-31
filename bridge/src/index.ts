@@ -19,6 +19,7 @@ type UIMessage =
 export interface BridgeEvents {
   onConnected?: () => void
   onDisconnected?: () => void
+  onError?: (reason: string) => void
   onPeers?: (peers: string[]) => void
   onSessions?: (names: string[]) => void
   onSessionState?: (agent: string, state: 'ready' | 'busy' | 'waiting') => void
@@ -59,6 +60,10 @@ export class Bridge {
     this.room.onConnectionState((s) => {
       if (s === 'open') this.events.onConnected?.()
       else if (s === 'closed') this.events.onDisconnected?.()
+    })
+
+    this.room.onError((reason) => {
+      this.events.onError?.(reason)
     })
 
     this.room.onMessage<UIMessage>((msg) => {
@@ -105,22 +110,22 @@ export class Bridge {
   }
 
   private handleMessage(msg: { from: { login: string }; data: UIMessage }): void {
-    const data = msg.data
-    if (!data || !data.type) return
+    const payload = msg.data
+    if (!payload || !payload.type) return
 
-    switch (data.type) {
+    switch (payload.type) {
       case 'command': {
-        this.events.onCommand?.(msg.from.login, data.agent, data.text)
-        if (tmux.sessionExists(data.agent)) {
-          const target = this.targetOverrides.get(data.agent) ?? tmux.getTarget(data.agent)
-          tmux.sendKeys(target, data.text)
+        this.events.onCommand?.(msg.from.login, payload.agent, payload.text)
+        if (tmux.sessionExists(payload.agent)) {
+          const target = this.targetOverrides.get(payload.agent) ?? tmux.getTarget(payload.agent)
+          tmux.sendKeys(target, payload.text)
           tmux.sendSpecialKey(target, 'Enter')
         }
         break
       }
 
       case 'control': {
-        const { agent, action } = data
+        const { agent, action } = payload
         this.events.onControl?.(msg.from.login, action)
         if (!tmux.sessionExists(agent)) break
         const target = this.targetOverrides.get(agent) ?? tmux.getTarget(agent)

@@ -21,8 +21,11 @@ interface Credentials {
 function loadCredentials(): Credentials | null {
   if (!existsSync(CREDS_FILE)) return null
   try {
-    return JSON.parse(readFileSync(CREDS_FILE, 'utf-8')) as Credentials
+    const parsed = JSON.parse(readFileSync(CREDS_FILE, 'utf-8')) as Credentials
+    if (!parsed.token || typeof parsed.token !== 'string') return null
+    return parsed
   } catch {
+    console.error(`Warning: credentials file is corrupted (${CREDS_FILE}). Run: agentcoder login`)
     return null
   }
 }
@@ -113,9 +116,100 @@ function login(): Promise<string> {
   })
 }
 
+export function parseStartArgs(cliArgs: string[]) {
+  let sessionId = ''
+  let token = ''
+  let apiBase: string | undefined
+  let watchList: string[] | undefined
+
+  const hasValue = (i: number) => i + 1 < cliArgs.length && !cliArgs[i + 1]!.startsWith('--')
+
+  for (let i = 1; i < cliArgs.length; i++) {
+    if (cliArgs[i] === '--session' && hasValue(i)) {
+      sessionId = cliArgs[++i]!
+    } else if (cliArgs[i] === '--token' && hasValue(i)) {
+      token = cliArgs[++i]!
+    } else if (cliArgs[i] === '--api' && hasValue(i)) {
+      apiBase = cliArgs[++i]!
+    } else if (cliArgs[i] === '--watch' && hasValue(i)) {
+      watchList = cliArgs[++i]!.split(',').map((s) => s.trim()).filter(Boolean)
+    }
+  }
+
+  // Fall back to saved credentials
+  if (!sessionId || !token) {
+    const saved = loadCredentials()
+    if (saved) {
+      sessionId = sessionId || saved.sessionId
+      token = token || saved.token
+    }
+  }
+
+  return { sessionId, token, apiBase, watchList }
+}
+
+async function handleStart(cliArgs: string[]): Promise<void> {
+  const { sessionId, token, apiBase, watchList } = parseStartArgs(cliArgs)
+
+  if (!token) {
+    console.error('Not logged in. Run: agentcoder login')
+    process.exit(1)
+  }
+
+  if (!sessionId) {
+    console.error('Error: --session <id> is required')
+    console.error('Use the same session ID shown in the web UI.')
+    process.exit(1)
+  }
+
+  // Pre-flight: check tmux is available
+  if (!tmux.isTmuxAvailable()) {
+    console.error('Error: tmux is not installed or not in PATH.')
+    console.error('Install it with: brew install tmux (macOS) or apt install tmux (Linux)')
+    process.exit(1)
+  }
+
+  // Pre-flight: check tmux has sessions
+  const sessions = tmux.listSessions()
+  if (sessions.length === 0) {
+    console.error('No tmux sessions found. Start a tmux session first:')
+    console.error('  tmux new -s mysession')
+    process.exit(1)
+  }
+
+  // Save for next time
+  saveCredentials({ token, sessionId })
+
+  const tui = new Tui(sessionId)
+  if (watchList) tui.setInitialWatch(watchList)
+
+  const bridge = new Bridge({ token, sessionId, apiBase, watchList }, {
+    onConnected: () => tui.setConnected(true),
+    onDisconnected: () => tui.setConnected(false),
+    onError: (reason) => tui.setError(reason),
+    onPeers: (peers) => tui.setPeers(peers),
+    onSessions: (names) => tui.discoverSessions(names),
+    onSessionState: (agent, state) => tui.updateSession(agent, state),
+    onOutput: (agent, bytes) => tui.recordOutput(agent, bytes),
+    onCommand: (from, agent, text) => tui.recordCommand(from, agent, text),
+    onControl: (from, action) => tui.recordControl(from, action),
+  })
+
+  bridge.start()
+
+  const action = await tui.start(
+    (watched) => bridge.setWatchList(watched),
+    (session) => tmux.listWindows(session),
+  )
+  tui.stop()
+  bridge.stop()
+
+  if (action === 'quit') process.exit(0)
+}
+
 async function main(): Promise<void> {
-  const args = process.argv.slice(2)
-  const command = args[0]
+  const cliArgs = process.argv.slice(2)
+  const command = cliArgs[0]
 
   if (!command || command === 'help' || command === '--help') {
     printUsage()
@@ -149,70 +243,7 @@ async function main(): Promise<void> {
   }
 
   if (command === 'start') {
-    let sessionId = ''
-    let token = ''
-    let apiBase: string | undefined
-    let watchList: string[] | undefined
-
-    for (let i = 1; i < args.length; i++) {
-      if (args[i] === '--session' && args[i + 1]) {
-        sessionId = args[++i]!
-      } else if (args[i] === '--token' && args[i + 1]) {
-        token = args[++i]!
-      } else if (args[i] === '--api' && args[i + 1]) {
-        apiBase = args[++i]!
-      } else if (args[i] === '--watch' && args[i + 1]) {
-        watchList = args[++i]!.split(',').map((s) => s.trim()).filter(Boolean)
-      }
-    }
-
-    // Fall back to saved credentials
-    if (!sessionId || !token) {
-      const saved = loadCredentials()
-      if (saved) {
-        sessionId = sessionId || saved.sessionId
-        token = token || saved.token
-      }
-    }
-
-    if (!token) {
-      console.error('Not logged in. Run: agentcoder login')
-      process.exit(1)
-    }
-
-    if (!sessionId) {
-      console.error('Error: --session <id> is required')
-      console.error('Use the same session ID shown in the web UI.')
-      process.exit(1)
-    }
-
-    // Save for next time
-    saveCredentials({ token, sessionId })
-
-    const tui = new Tui(sessionId)
-    if (watchList) tui.setInitialWatch(watchList)
-
-    const bridge = new Bridge({ token, sessionId, apiBase, watchList }, {
-      onConnected: () => tui.setConnected(true),
-      onDisconnected: () => tui.setConnected(false),
-      onPeers: (peers) => tui.setPeers(peers),
-      onSessions: (names) => tui.discoverSessions(names),
-      onSessionState: (agent, state) => tui.updateSession(agent, state),
-      onOutput: (agent, bytes) => tui.recordOutput(agent, bytes),
-      onCommand: (from, agent, text) => tui.recordCommand(from, agent, text),
-      onControl: (from, action) => tui.recordControl(from, action),
-    })
-
-    bridge.start()
-
-    const action = await tui.start(
-      (watched) => bridge.setWatchList(watched),
-      (session) => tmux.listWindows(session),
-    )
-    tui.stop()
-    bridge.stop()
-
-    if (action === 'quit') process.exit(0)
+    await handleStart(cliArgs)
   } else {
     console.error(`Unknown command: ${command}`)
     printUsage()

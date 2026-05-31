@@ -2,6 +2,7 @@ import WebSocket from 'ws'
 
 const RECONNECT_BASE_MS = 1000
 const RECONNECT_MAX_MS = 30_000
+const MAX_RECONNECT_ATTEMPTS = 15
 const API_BASE = 'wss://api.freeappstore.online'
 
 export interface RoomPeer {
@@ -26,11 +27,13 @@ export class RoomClient {
   private listeners: Array<(msg: RoomMessage) => void> = []
   private stateListeners: Array<(state: ConnectionState) => void> = []
   private peerListeners: Array<(peers: RoomPeer[]) => void> = []
+  private errorListeners: Array<(reason: string) => void> = []
   private _peers: RoomPeer[] = []
   private connectionState: ConnectionState = 'connecting'
   private reconnectAttempt = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private closed = false
+  private _authFailed = false
 
   constructor(
     private readonly appId: string,
@@ -47,6 +50,10 @@ export class RoomClient {
 
   get peers(): RoomPeer[] {
     return this._peers
+  }
+
+  get authFailed(): boolean {
+    return this._authFailed
   }
 
   send<T>(data: T): void {
@@ -73,6 +80,13 @@ export class RoomClient {
     this.peerListeners.push(listener)
     return () => {
       this.peerListeners = this.peerListeners.filter((l) => l !== listener)
+    }
+  }
+
+  onError(listener: (reason: string) => void): () => void {
+    this.errorListeners.push(listener)
+    return () => {
+      this.errorListeners = this.errorListeners.filter((l) => l !== listener)
     }
   }
 
@@ -104,6 +118,31 @@ export class RoomClient {
       this.setState('open')
     })
 
+    // ws fires 'unexpected-response' when the HTTP upgrade is rejected.
+    // This fires INSTEAD of 'open', and is followed by 'close'.
+    socket.on('unexpected-response', (_req, res) => {
+      // Drain the response body to prevent memory leaks
+      res.resume()
+
+      const status = res.statusCode ?? 0
+      if (status === 401 || status === 403) {
+        this._authFailed = true
+        this.emitError('Token expired or invalid. Run: agentcoder login')
+        this.closed = true
+        this.setState('error')
+      } else if (status === 404) {
+        this.emitError('Room not found (404). Check the app ID and session ID.')
+        this.closed = true
+        this.setState('error')
+      } else if (status === 429) {
+        this.emitError('Rate limited (429). Too many connections — wait a minute and try again.')
+        this.closed = true
+        this.setState('error')
+      }
+      // 5xx: don't emitError — the close handler will trigger a reconnect.
+      // If it keeps failing, the max reconnect limit will fire a fatal error.
+    })
+
     socket.on('message', (raw) => {
       try {
         const parsed = JSON.parse(raw.toString()) as
@@ -119,7 +158,7 @@ export class RoomClient {
           this._peers = parsed.peers
           for (const l of this.peerListeners) l(this._peers)
         } else if (parsed.kind === 'error') {
-          // Room errors are surfaced via connection state
+          this.emitError(parsed.error)
         }
       } catch {
         // ignore malformed frames
@@ -140,10 +179,20 @@ export class RoomClient {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer || this.closed) return
+
+    if (this.reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+      this.emitError(
+        `Could not connect after ${MAX_RECONNECT_ATTEMPTS} attempts. ` +
+        'Check your network connection and try again.',
+      )
+      this.closed = true
+      this.setState('error')
+      return
+    }
+
     const backoff = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** this.reconnectAttempt)
     const jitter = Math.random() * 1000
     this.reconnectAttempt++
-    // Reconnect silently — TUI shows connection state
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
       if (!this.closed) this.connect()
@@ -154,5 +203,9 @@ export class RoomClient {
     if (this.connectionState === state) return
     this.connectionState = state
     for (const l of this.stateListeners) l(state)
+  }
+
+  private emitError(reason: string): void {
+    for (const l of this.errorListeners) l(reason)
   }
 }

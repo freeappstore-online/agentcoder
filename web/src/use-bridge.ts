@@ -7,6 +7,7 @@ const MAX_BUFFER_SIZE = 500_000
 interface BridgeState {
   connected: boolean
   bridgeOnline: boolean
+  bridgeWasOnline: boolean
   agents: string[]
   agentStates: Record<string, AgentState>
   agentBuffers: Record<string, string>
@@ -16,6 +17,7 @@ export function useBridge(room: Room | null) {
   const [state, setState] = useState<BridgeState>({
     connected: false,
     bridgeOnline: false,
+    bridgeWasOnline: false,
     agents: [],
     agentStates: {},
     agentBuffers: {},
@@ -32,23 +34,24 @@ export function useBridge(room: Room | null) {
     })
 
     const unsubMsg = room.onMessage<BridgeMessage>((msg: RoomMessage<BridgeMessage>) => {
-      const data = msg.data
-      if (!data || !data.type) return
+      const messagePayload = msg.data
+      if (!messagePayload || !messagePayload.type) return
 
-      switch (data.type) {
+      switch (messagePayload.type) {
         case 'heartbeat':
           lastHeartbeat.current = Date.now()
           setState((prev) => ({
             ...prev,
             bridgeOnline: true,
-            agents: data.agents,
+            bridgeWasOnline: true,
+            agents: messagePayload.agents,
           }))
           break
 
         case 'status':
           setState((prev) => ({
             ...prev,
-            agentStates: { ...prev.agentStates, [data.agent]: data.state },
+            agentStates: { ...prev.agentStates, [messagePayload.agent]: messagePayload.state },
           }))
           break
 
@@ -64,23 +67,23 @@ export function useBridge(room: Room | null) {
             })
           }
 
-          if (data.total && data.total > 1) {
-            const chunkKey = `${data.agent}:${data.session}`
+          if (messagePayload.total && messagePayload.total > 1) {
+            const chunkKey = `${messagePayload.agent}:${messagePayload.session}`
             let entry = chunks.current.get(chunkKey)
-            if (!entry || data.seq === 0) {
-              entry = { parts: [], total: data.total }
+            if (!entry || messagePayload.seq === 0) {
+              entry = { parts: [], total: messagePayload.total }
               chunks.current.set(chunkKey, entry)
             }
-            entry.parts[data.seq] = data.content
+            entry.parts[messagePayload.seq] = messagePayload.content
 
             const received = entry.parts.filter(Boolean).length
             if (received === entry.total) {
               const full = entry.parts.join('')
               chunks.current.delete(chunkKey)
-              applyScreen(full, data.agent)
+              applyScreen(full, messagePayload.agent)
             }
           } else {
-            applyScreen(data.content, data.agent)
+            applyScreen(messagePayload.content, messagePayload.agent)
           }
           break
         }
@@ -99,7 +102,7 @@ export function useBridge(room: Room | null) {
       clearInterval(heartbeatCheck)
       chunks.current.clear()
       lastHeartbeat.current = 0
-      setState({ connected: false, bridgeOnline: false, agents: [], agentStates: {}, agentBuffers: {} })
+      setState({ connected: false, bridgeOnline: false, bridgeWasOnline: false, agents: [], agentStates: {}, agentBuffers: {} })
     }
   }, [room])
 

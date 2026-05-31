@@ -4,6 +4,7 @@
     "target": "es2023",
     "lib": ["ES2023"],
     "module": "esnext",
+    "strict": true,
     "skipLibCheck": true,
 
     "moduleResolution": "bundler",

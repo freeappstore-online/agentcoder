@@ -4,7 +4,7 @@ import { useRef, useEffect, useState } from 'react'
  * Syntax-highlight Claude Code terminal output.
  * Ported from ~/dev/ac/platform/web/src/components/Message.tsx
  */
-function highlightLine(line: string): React.ReactNode {
+export function highlightLine(line: string): React.ReactNode {
   // Tool calls: ⏺ Read(...), ⏺ Bash(...)
   if (/^⏺\s*(Read|Update|Write|Bash|Search|Glob|Grep|Edit)\(/.test(line)) {
     const match = line.match(/^(⏺\s*)(Read|Update|Write|Bash|Search|Glob|Grep|Edit)(\()(.*)(\).*)$/)
