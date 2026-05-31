@@ -63,6 +63,9 @@ function describeError(err: unknown): string {
 }
 
 export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
+  const logRef = useRef(log)
+  logRef.current = log
+
   const [state, setState] = useState<TranslatorState>({
     translating: false,
     lastTranslation: null,
@@ -82,7 +85,7 @@ export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
       setState((prev) => ({ ...prev, translating: true, error: null }))
 
       const inputKB = (terminalOutput.length / 1024).toFixed(1)
-      log?.info(`Translation started (${inputKB}KB input)`)
+      logRef.current?.info(`Translation started (${inputKB}KB input)`)
 
       try {
         // Truncate to ~100KB for token limits
@@ -114,15 +117,15 @@ export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
         const text = apiBody.content?.[0]?.text ?? ''
 
         const parsed = parseTranslation(text)
-        log?.info(`Translation complete: ${parsed.agentStatus}, ${parsed.filesChanged.length} files changed`)
+        logRef.current?.info(`Translation complete: ${parsed.agentStatus}, ${parsed.filesChanged.length} files changed`)
         setState({ translating: false, lastTranslation: parsed, error: null })
       } catch (err) {
         if ((err as Error).name === 'AbortError') {
-          log?.info('Translation cancelled (new request)')
+          logRef.current?.info('Translation cancelled (new request)')
           return
         }
         const friendly = describeError(err)
-        log?.error(`Translation failed: ${friendly}`)
+        logRef.current?.error(`Translation failed: ${friendly}`)
         setState((prev) => ({
           ...prev,
           translating: false,
@@ -130,14 +133,14 @@ export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
         }))
       }
     },
-    [app, log],
+    [app],
   )
 
   const compose = useCallback(
     async (userIntent: string, context: string): Promise<string> => {
       if (!app) return userIntent
 
-      log?.info(`Composing response for: "${userIntent.slice(0, 50)}"`)
+      logRef.current?.info(`Composing response for: "${userIntent.slice(0, 50)}"`)
 
       try {
         const response = await callAnthropicApi(app, {
@@ -162,21 +165,21 @@ export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
         })
 
         if (!response.ok) {
-          log?.error(`Compose failed (HTTP ${response.status})`)
+          logRef.current?.error(`Compose failed (HTTP ${response.status})`)
           return userIntent
         }
         const apiBody = await response.json() as {
           content: Array<{ type: string; text: string }>
         }
         const composed = apiBody.content?.[0]?.text?.trim() ?? userIntent
-        log?.info(`Compose complete: "${composed.slice(0, 50)}"`)
+        logRef.current?.info(`Compose complete: "${composed.slice(0, 50)}"`)
         return composed
       } catch (err) {
-        log?.error(`Compose failed: ${describeError(err)}`)
+        logRef.current?.error(`Compose failed: ${describeError(err)}`)
         return userIntent
       }
     },
-    [app, log],
+    [app],
   )
 
   return { ...state, translate, compose }
