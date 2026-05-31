@@ -132,9 +132,9 @@ pnpm dev          # web UI at localhost:5173
 pnpm build        # type-check + production build
 pnpm build:bridge # bridge CLI
 
-# Tests (39 total)
-cd bridge && npx vitest run   # 29 tests
-cd web && npx vitest run      # 10 tests
+# Tests (44 total)
+cd bridge && npx vitest run   # 32 tests
+cd web && npx vitest run      # 12 tests
 ```
 
 ## License
