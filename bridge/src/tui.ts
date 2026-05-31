@@ -62,8 +62,9 @@ export class Tui {
   private state: TuiState
   private renderTimer: ReturnType<typeof setInterval> | null = null
   private actionResolve: ((action: TuiAction) => void) | null = null
+  private selectedAgent: string | null = null
   private picking = false
-  private expanded: string | null = null  // session name expanded to show windows
+  private expanded: string | null = null
   private pickerCursor = 0
   private pickerItems: Array<{ label: string; key: string; indent: boolean; isClaude: boolean }> = []
   private onWatchChanged: ((watched: Map<string, string | undefined>) => void) | null = null
@@ -265,6 +266,10 @@ export class Tui {
   private closePicker(): void {
     this.picking = false
     this.expanded = null
+    const watched = this.getWatched()
+    if (watched.length > 0 && (!this.selectedAgent || !watched.includes(this.selectedAgent))) {
+      this.selectedAgent = watched[0]!
+    }
     this.onWatchChanged?.(this.getWatchedMap())
     this.render()
   }
@@ -283,6 +288,14 @@ export class Tui {
     const ch = (key.name || '').toLowerCase()
     if (ch === 'q') this.actionResolve?.('quit')
     if (ch === 'w') this.openPicker()
+    if (ch === 'tab') {
+      const watched = this.getWatched()
+      if (watched.length > 0) {
+        const idx = this.selectedAgent ? watched.indexOf(this.selectedAgent) : -1
+        this.selectedAgent = watched[(idx + 1) % watched.length]!
+        this.render()
+      }
+    }
   }
 
   private handlePickerKey(key: readline.Key): void {
@@ -437,6 +450,7 @@ export class Tui {
       lines.push(`  ${c(DIM, 'No sessions selected — press')} ${c(WHITE, 'w')} ${c(DIM, 'to pick')}`)
     } else {
       for (const s of watched) {
+        const isSelected = s.name === this.selectedAgent
         const dot = s.state === 'busy' ? c(BLUE, '●')
           : s.state === 'ready' ? c(GREEN, '●')
           : c(YELLOW, '○')
@@ -444,9 +458,11 @@ export class Tui {
           : s.state === 'ready' ? c(GREEN, 'ready')
           : c(YELLOW, 'waiting')
         const age = formatAge(Date.now() - s.lastActivity)
-        const name = s.name.length > 20 ? s.name.slice(0, 19) + '…' : s.name.padEnd(20)
+        const rawName = s.name.length > 20 ? s.name.slice(0, 19) + '…' : s.name.padEnd(20)
+        const name = isSelected ? c(CYAN + BOLD, rawName) : c(WHITE, rawName)
+        const sel = isSelected ? c(CYAN, '▸') : ' '
         const sent = s.bytesSent > 0 ? c(DIM, formatBytes(s.bytesSent)) : ''
-        lines.push(`  ${dot} ${c(WHITE, name)} ${stateText.padEnd(18)} ${c(DIM, age)}  ${sent}`)
+        lines.push(`  ${sel}${dot} ${name} ${stateText.padEnd(18)} ${c(DIM, age)}  ${sent}`)
       }
     }
     if (unwatched.length > 0) {
@@ -471,7 +487,7 @@ export class Tui {
     lines.push('')
 
     // Footer
-    lines.push(`  ${c(DIM, 'w')} ${c(GRAY, 'watch')}    ${c(DIM, 'q')} ${c(GRAY, 'quit')}    ${c(DIM, 'Ctrl+C')} ${c(GRAY, 'stop')}`)
+    lines.push(`  ${c(DIM, 'tab')} ${c(GRAY, 'switch agent')}    ${c(DIM, 'w')} ${c(GRAY, 'watch')}    ${c(DIM, 'q')} ${c(GRAY, 'quit')}`)
     lines.push('')
 
     process.stdout.write(CLEAR + lines.join('\n'))

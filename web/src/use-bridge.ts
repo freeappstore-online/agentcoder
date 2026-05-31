@@ -2,14 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Room, RoomMessage } from '@freeappstore/sdk'
 import type { BridgeMessage, UIMessage, AgentState } from './types'
 
-const MAX_BUFFER_SIZE = 500_000 // 500KB, matches bridge buffer
+const MAX_BUFFER_SIZE = 500_000
 
 interface BridgeState {
   connected: boolean
   bridgeOnline: boolean
   agents: string[]
   agentStates: Record<string, AgentState>
-  outputBuffer: string
+  agentBuffers: Record<string, string>
 }
 
 export function useBridge(room: Room | null) {
@@ -18,10 +18,9 @@ export function useBridge(room: Room | null) {
     bridgeOnline: false,
     agents: [],
     agentStates: {},
-    outputBuffer: '',
+    agentBuffers: {},
   })
 
-  // Chunk reassembly
   const chunks = useRef<Map<string, { parts: string[]; total: number }>>(new Map())
   const lastHeartbeat = useRef(0)
 
@@ -54,28 +53,14 @@ export function useBridge(room: Room | null) {
           break
 
         case 'output': {
-          // Reassemble chunked messages, then replace per-agent screen
           const applyScreen = (screen: string, agent: string) => {
             setState((prev) => {
-              // Replace this agent's section. Each agent gets a marker block:
-              //   \n--- agent ---\n<content>
-              // Find this agent's block and replace just its content,
-              // preserving other agents' blocks.
-              const marker = `\n--- ${agent} ---\n`
-              const idx = prev.outputBuffer.indexOf(marker)
-              let buf: string
-              if (idx >= 0) {
-                // Find the end of this agent's block (next marker or end of string)
-                const afterMarker = idx + marker.length
-                const nextMarker = prev.outputBuffer.indexOf('\n--- ', afterMarker)
-                const before = prev.outputBuffer.slice(0, idx)
-                const after = nextMarker >= 0 ? prev.outputBuffer.slice(nextMarker) : ''
-                buf = before + marker + screen + after
-              } else {
-                buf = prev.outputBuffer + marker + screen
-              }
+              let buf = screen
               if (buf.length > MAX_BUFFER_SIZE) buf = buf.slice(-MAX_BUFFER_SIZE)
-              return { ...prev, outputBuffer: buf }
+              return {
+                ...prev,
+                agentBuffers: { ...prev.agentBuffers, [agent]: buf },
+              }
             })
           }
 
@@ -102,7 +87,6 @@ export function useBridge(room: Room | null) {
       }
     })
 
-    // Detect bridge going offline (no heartbeat for 60s)
     const heartbeatCheck = setInterval(() => {
       if (lastHeartbeat.current > 0 && Date.now() - lastHeartbeat.current > 60_000) {
         setState((prev) => prev.bridgeOnline ? { ...prev, bridgeOnline: false } : prev)
@@ -115,7 +99,7 @@ export function useBridge(room: Room | null) {
       clearInterval(heartbeatCheck)
       chunks.current.clear()
       lastHeartbeat.current = 0
-      setState({ connected: false, bridgeOnline: false, agents: [], agentStates: {}, outputBuffer: '' })
+      setState({ connected: false, bridgeOnline: false, agents: [], agentStates: {}, agentBuffers: {} })
     }
   }, [room])
 

@@ -106,9 +106,6 @@ interface StatusBarProps {
 }
 
 function StatusBar({ sessionId, connected, bridgeOnline, agents, agentStates, onDisconnect, onSettings }: StatusBarProps) {
-  const activeAgent = agents[0]
-  const agentState = activeAgent ? agentStates[activeAgent] : undefined
-
   return (
     <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm sticky top-0 z-50">
       <span className="font-mono text-xs text-[var(--muted)]">{sessionId}</span>
@@ -120,15 +117,18 @@ function StatusBar({ sessionId, connected, bridgeOnline, agents, agentStates, on
         <span className={`h-1.5 w-1.5 rounded-full ${bridgeOnline ? 'bg-emerald-500' : 'bg-amber-500'}`} />
         {bridgeOnline ? 'Bridge' : 'No bridge'}
       </span>
-      {activeAgent && (
+      {agents.length === 1 && agents[0] && (
         <span className="text-[var(--muted)]">
-          <span className="text-[var(--ink)] font-medium">{activeAgent}</span>
-          {agentState && (
-            <span className={`ml-1 ${agentState === 'busy' ? 'text-blue-500' : agentState === 'waiting' ? 'text-amber-500' : 'text-emerald-500'}`}>
-              ({agentState})
+          <span className="text-[var(--ink)] font-medium">{agents[0]}</span>
+          {agentStates[agents[0]] && (
+            <span className={`ml-1 ${agentStates[agents[0]] === 'busy' ? 'text-blue-500' : agentStates[agents[0]] === 'waiting' ? 'text-amber-500' : 'text-emerald-500'}`}>
+              ({agentStates[agents[0]]})
             </span>
           )}
         </span>
+      )}
+      {agents.length > 1 && (
+        <span className="text-[var(--muted)]">{agents.length} agents</span>
       )}
       <div className="ml-auto flex items-center gap-2">
         <button
@@ -151,12 +151,15 @@ function StatusBar({ sessionId, connected, bridgeOnline, agents, agentStates, on
 
 interface TranslationPanelProps {
   bridgeOnline: boolean
+  selectedAgent: string | null
   agents: string[]
+  agentStates: Record<string, import('./types').AgentState>
   outputBuffer: string
+  onSelectAgent: (agent: string) => void
   send: (msg: UIMessage) => void
 }
 
-function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: TranslationPanelProps) {
+function TranslationPanel({ bridgeOnline, selectedAgent, agents, agentStates, outputBuffer, onSelectAgent, send }: TranslationPanelProps) {
   const { translating, lastTranslation, error, translate, compose } = useTranslator(fas)
   const voice = useVoiceInput()
   const [input, setInput] = useState('')
@@ -198,17 +201,17 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
   }
 
   const handleSend = useCallback(() => {
-    if (!input.trim() || !agents[0]) return
-    send({ type: 'command', agent: agents[0], session: '', text: input })
+    if (!input.trim() || !selectedAgent) return
+    send({ type: 'command', agent: selectedAgent, session: '', text: input })
     setInput('')
-  }, [input, agents, send])
+  }, [input, selectedAgent, send])
 
   const handleCompose = async () => {
-    if (!input.trim() || !agents[0]) return
+    if (!input.trim() || !selectedAgent) return
     const context = lastTranslation?.summary ?? 'No context available'
     const composed = await compose(input, context)
     if (composed.trim()) {
-      send({ type: 'command', agent: agents[0], session: '', text: composed })
+      send({ type: 'command', agent: selectedAgent, session: '', text: composed })
       setInput('')
     }
   }
@@ -226,6 +229,33 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
 
   return (
     <div className="flex flex-1 flex-col">
+      {/* Agent tabs */}
+      {agents.length > 1 && (
+        <div className="flex gap-1 border-b border-[var(--border)] bg-[var(--bg)] px-4 py-1.5 overflow-x-auto">
+          {agents.map((agent) => {
+            const state = agentStates[agent]
+            const isActive = agent === selectedAgent
+            const dot = state === 'busy' ? 'bg-blue-500'
+              : state === 'ready' ? 'bg-emerald-500'
+              : 'bg-[var(--muted)] opacity-40'
+            return (
+              <button
+                key={agent}
+                onClick={() => onSelectAgent(agent)}
+                className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-[var(--surface)] text-[var(--ink)]'
+                    : 'text-[var(--muted)] hover:text-[var(--ink)]'
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+                {agent}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* Translation panel */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={outputRef}>
         {!bridgeOnline && (
@@ -357,9 +387,9 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
             </button>
             <button
               onClick={() => {
-                if (agents[0]) send({ type: 'control', action: 'interrupt', agent: agents[0] })
+                if (selectedAgent) send({ type: 'control', action: 'interrupt', agent: selectedAgent })
               }}
-              disabled={!bridgeOnline || !agents[0]}
+              disabled={!bridgeOnline || !selectedAgent}
               className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950/30 disabled:opacity-30"
             >
               Ctrl+C
@@ -376,6 +406,16 @@ function TranslationPanel({ bridgeOnline, agents, outputBuffer, send }: Translat
 
 function SessionView({ sessionId, room, onDisconnect, onSettings }: { sessionId: string; room: Room; onDisconnect: () => void; onSettings: () => void }) {
   const bridge = useBridge(room)
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+
+  // Auto-select first agent, or keep selection if still valid
+  useEffect(() => {
+    if (bridge.agents.length === 0) return
+    if (selectedAgent && bridge.agents.includes(selectedAgent)) return
+    setSelectedAgent(bridge.agents[0])
+  }, [bridge.agents, selectedAgent])
+
+  const activeBuffer = selectedAgent ? (bridge.agentBuffers[selectedAgent] ?? '') : ''
 
   return (
     <>
@@ -390,8 +430,11 @@ function SessionView({ sessionId, room, onDisconnect, onSettings }: { sessionId:
       />
       <TranslationPanel
         bridgeOnline={bridge.bridgeOnline}
+        selectedAgent={selectedAgent}
         agents={bridge.agents}
-        outputBuffer={bridge.outputBuffer}
+        agentStates={bridge.agentStates}
+        outputBuffer={activeBuffer}
+        onSelectAgent={setSelectedAgent}
         send={bridge.send}
       />
     </>
