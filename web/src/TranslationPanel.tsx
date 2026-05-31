@@ -3,11 +3,14 @@ import { useVoiceInput } from '@freeappstore/sdk/hooks'
 import type { FreeAppStore } from '@freeappstore/sdk'
 import { useTranslator } from './use-translator'
 import { TerminalView } from './TerminalView'
+import { DebugPanel } from './DebugPanel'
 import { AgentTabs, StatusContent, InputBar } from './TranslationWidgets'
 import type { AgentState, UIMessage } from './types'
+import type { EventLog } from './use-event-log'
 
 interface TranslationPanelProps {
   app: FreeAppStore
+  log: EventLog
   bridgeOnline: boolean
   bridgeWasOnline: boolean
   selectedAgent: string | null
@@ -18,8 +21,8 @@ interface TranslationPanelProps {
   send: (msg: UIMessage) => void
 }
 
-export function TranslationPanel({ app, bridgeOnline, bridgeWasOnline, selectedAgent, agents, agentStates, outputBuffer, onSelectAgent, send }: TranslationPanelProps) {
-  const { translating, lastTranslation, error, translate, compose } = useTranslator(app)
+export function TranslationPanel({ app, log, bridgeOnline, bridgeWasOnline, selectedAgent, agents, agentStates, outputBuffer, onSelectAgent, send }: TranslationPanelProps) {
+  const { translating, lastTranslation, error, translate, compose } = useTranslator(app, log)
   const voice = useVoiceInput()
   const [input, setInput] = useState('')
   const [needsKey, setNeedsKey] = useState(true)
@@ -37,7 +40,10 @@ export function TranslationPanel({ app, bridgeOnline, bridgeWasOnline, selectedA
 
   // Check if user has an API key
   useEffect(() => {
-    const check = () => app.keys.has('anthropic').then((has) => setNeedsKey(!has)).catch(() => setNeedsKey(true))
+    const check = () => app.keys.has('anthropic').then((has) => {
+      setNeedsKey(!has)
+      log.info(has ? 'API key: configured' : 'API key: not set')
+    }).catch(() => setNeedsKey(true))
     check()
     window.addEventListener('focus', check)
     return () => window.removeEventListener('focus', check)
@@ -51,6 +57,7 @@ export function TranslationPanel({ app, bridgeOnline, bridgeWasOnline, selectedA
 
     if (prev === 'busy' && agentState === 'ready') {
       setTaskCompleted(true)
+      log.info(`Task completed: ${selectedAgent} finished`)
     } else if (agentState === 'busy') {
       setTaskCompleted(false)
     }
@@ -123,6 +130,7 @@ export function TranslationPanel({ app, bridgeOnline, bridgeWasOnline, selectedA
       </div>
 
       <TerminalView output={outputBuffer} />
+      <DebugPanel entries={log.entries} />
 
       <InputBar
         input={input}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Room, RoomMessage } from '@freeappstore/sdk'
 import type { BridgeMessage, UIMessage, AgentState } from './types'
+import type { EventLog } from './use-event-log'
 
 const MAX_BUFFER_SIZE = 500_000
 
@@ -13,7 +14,7 @@ interface BridgeState {
   agentBuffers: Record<string, string>
 }
 
-export function useBridge(room: Room | null) {
+export function useBridge(room: Room | null, log?: EventLog) {
   const [state, setState] = useState<BridgeState>({
     connected: false,
     bridgeOnline: false,
@@ -29,8 +30,10 @@ export function useBridge(room: Room | null) {
   useEffect(() => {
     if (!room) return
 
-    const unsubState = room.onConnectionState((s) => {
-      setState((prev) => ({ ...prev, connected: s === 'open' }))
+    const unsubState = room.onConnectionState((connectionState) => {
+      const isOpen = connectionState === 'open'
+      log?.[isOpen ? 'info' : 'warn'](`Room ${isOpen ? 'connected' : connectionState}`)
+      setState((prev) => ({ ...prev, connected: isOpen }))
     })
 
     const unsubMsg = room.onMessage<BridgeMessage>((msg: RoomMessage<BridgeMessage>) => {
@@ -40,6 +43,7 @@ export function useBridge(room: Room | null) {
       switch (messagePayload.type) {
         case 'heartbeat':
           lastHeartbeat.current = Date.now()
+          log?.info(`Heartbeat from bridge (${messagePayload.agents.length} agent${messagePayload.agents.length !== 1 ? 's' : ''}: ${messagePayload.agents.join(', ') || 'none'})`)
           setState((prev) => ({
             ...prev,
             bridgeOnline: true,
@@ -49,6 +53,7 @@ export function useBridge(room: Room | null) {
           break
 
         case 'status':
+          log?.info(`Agent ${messagePayload.agent}: ${messagePayload.state}`)
           setState((prev) => ({
             ...prev,
             agentStates: { ...prev.agentStates, [messagePayload.agent]: messagePayload.state },
@@ -80,9 +85,11 @@ export function useBridge(room: Room | null) {
             if (received === entry.total) {
               const full = entry.parts.join('')
               chunks.current.delete(chunkKey)
+              log?.info(`Output received: ${messagePayload.agent} (${(full.length / 1024).toFixed(1)}KB, ${entry.total} chunks)`)
               applyScreen(full, messagePayload.agent)
             }
           } else {
+            log?.info(`Output received: ${messagePayload.agent} (${(messagePayload.content.length / 1024).toFixed(1)}KB)`)
             applyScreen(messagePayload.content, messagePayload.agent)
           }
           break
@@ -92,7 +99,13 @@ export function useBridge(room: Room | null) {
 
     const heartbeatCheck = setInterval(() => {
       if (lastHeartbeat.current > 0 && Date.now() - lastHeartbeat.current > 60_000) {
-        setState((prev) => prev.bridgeOnline ? { ...prev, bridgeOnline: false } : prev)
+        setState((prev) => {
+          if (prev.bridgeOnline) {
+            log?.warn('Bridge heartbeat timeout (>60s) — marking offline')
+            return { ...prev, bridgeOnline: false }
+          }
+          return prev
+        })
       }
     }, 15_000)
 
@@ -104,13 +117,16 @@ export function useBridge(room: Room | null) {
       lastHeartbeat.current = 0
       setState({ connected: false, bridgeOnline: false, bridgeWasOnline: false, agents: [], agentStates: {}, agentBuffers: {} })
     }
-  }, [room])
+  }, [room, log])
 
   const send = useCallback(
     (msg: UIMessage) => {
-      if (room) room.send(msg)
+      if (room) {
+        log?.info(`Sent ${msg.type}${msg.type === 'command' ? `: "${msg.text.slice(0, 50)}"` : `: ${msg.action}`}`)
+        room.send(msg)
+      }
     },
-    [room],
+    [room, log],
   )
 
   return { ...state, send }

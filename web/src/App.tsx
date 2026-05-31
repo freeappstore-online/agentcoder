@@ -3,6 +3,7 @@ import { initApp } from '@freeappstore/sdk'
 import { SignInButton, ProfileMenu, BuildInfo, Spinner, Card, Footer } from '@freeappstore/sdk/ui'
 import { useAuth } from '@freeappstore/sdk/hooks'
 import { useBridge } from './use-bridge'
+import { useEventLog } from './use-event-log'
 import { TranslationPanel } from './TranslationPanel'
 import type { Room } from '@freeappstore/sdk'
 import { ConnectBridge } from './ConnectBridge'
@@ -66,7 +67,8 @@ function StatusBar({ sessionId, connected, bridgeOnline, agents, agentStates, on
 }
 
 function SessionView({ sessionId, room, onDisconnect, onSettings }: { sessionId: string; room: Room; onDisconnect: () => void; onSettings: () => void }) {
-  const bridge = useBridge(room)
+  const log = useEventLog()
+  const bridge = useBridge(room, log)
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
 
   // Auto-select first agent, or keep selection if still valid
@@ -91,6 +93,7 @@ function SessionView({ sessionId, room, onDisconnect, onSettings }: { sessionId:
       />
       <TranslationPanel
         app={fas}
+        log={log}
         bridgeOnline={bridge.bridgeOnline}
         bridgeWasOnline={bridge.bridgeWasOnline}
         selectedAgent={selectedAgent}
