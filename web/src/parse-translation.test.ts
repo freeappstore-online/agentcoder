@@ -68,11 +68,21 @@ describe('parseTranslation', () => {
   })
 
   it('does NOT greedily match across multiple JSON objects', () => {
-    // The old greedy regex would match from first { to last }, capturing garbage
     const text = `Previous: {"old": true}\n\nCurrent:\n${JSON.stringify(VALID_RESULT)}`
-    // This should parse the first valid JSON object it finds
     const result = parseTranslation(text)
-    // Should get either the old or the valid result — NOT a merged garbage object
     expect(result).toBeDefined()
+  })
+
+  it('handles unicode in summary', () => {
+    const withUnicode = { ...VALID_RESULT, summary: 'Fixed the ❯ prompt detection — added ✳ check' }
+    const result = parseTranslation(JSON.stringify(withUnicode))
+    expect(result.summary).toContain('❯')
+    expect(result.summary).toContain('✳')
+  })
+
+  it('handles very long filesChanged arrays', () => {
+    const manyFiles = { ...VALID_RESULT, filesChanged: Array.from({ length: 50 }, (_, i) => `src/file${i}.ts`) }
+    const result = parseTranslation(JSON.stringify(manyFiles))
+    expect(result.filesChanged).toHaveLength(50)
   })
 })

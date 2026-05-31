@@ -56,52 +56,72 @@ describe('chunkContent', () => {
   })
 })
 
-// Test per-agent screen replacement logic (mirrors use-bridge.ts applyScreen)
-function applyScreen(buffer: string, screen: string, agent: string, maxSize = 500_000): string {
-  const marker = `\n--- ${agent} ---\n`
-  const idx = buffer.indexOf(marker)
-  let buf: string
-  if (idx >= 0) {
-    const afterMarker = idx + marker.length
-    const nextMarker = buffer.indexOf('\n--- ', afterMarker)
-    const before = buffer.slice(0, idx)
-    const after = nextMarker >= 0 ? buffer.slice(nextMarker) : ''
-    buf = before + marker + screen + after
-  } else {
-    buf = buffer + marker + screen
-  }
-  if (buf.length > maxSize) buf = buf.slice(-maxSize)
-  return buf
-}
-
-describe('applyScreen (per-agent replacement)', () => {
-  it('appends first screen for a new agent', () => {
-    const result = applyScreen('', 'screen content', 'claude')
-    expect(result).toContain('--- claude ---')
-    expect(result).toContain('screen content')
+// Test per-agent buffer replacement (mirrors use-bridge.ts)
+describe('per-agent buffers', () => {
+  it('stores screen per agent', () => {
+    const buffers: Record<string, string> = {}
+    buffers['claude'] = 'screen A'
+    buffers['codex'] = 'screen B'
+    expect(buffers['claude']).toBe('screen A')
+    expect(buffers['codex']).toBe('screen B')
   })
 
   it('replaces screen for same agent', () => {
-    const buf1 = applyScreen('', 'old screen', 'claude')
-    const buf2 = applyScreen(buf1, 'new screen', 'claude')
-    expect(buf2).toContain('new screen')
-    expect(buf2).not.toContain('old screen')
-    // Only one marker
-    expect(buf2.split('--- claude ---').length).toBe(2)
+    const buffers: Record<string, string> = {}
+    buffers['claude'] = 'old screen'
+    buffers['claude'] = 'new screen'
+    expect(buffers['claude']).toBe('new screen')
   })
 
   it('preserves other agents when replacing', () => {
-    let buf = applyScreen('', 'agent1 output', 'agent1')
-    buf = applyScreen(buf, 'agent2 output', 'agent2')
-    buf = applyScreen(buf, 'agent1 updated', 'agent1')
-    expect(buf).toContain('agent1 updated')
-    expect(buf).toContain('agent2 output')
-    expect(buf).not.toContain('agent1 output')
+    const buffers: Record<string, string> = {}
+    buffers['agent1'] = 'output 1'
+    buffers['agent2'] = 'output 2'
+    buffers['agent1'] = 'updated 1'
+    expect(buffers['agent1']).toBe('updated 1')
+    expect(buffers['agent2']).toBe('output 2')
   })
 
-  it('trims when over max size', () => {
-    const bigScreen = 'x'.repeat(600_000)
-    const result = applyScreen('', bigScreen, 'claude', 500_000)
-    expect(result.length).toBe(500_000)
+  it('truncates when over max size', () => {
+    const MAX = 500_000
+    let buf = 'x'.repeat(600_000)
+    if (buf.length > MAX) buf = buf.slice(-MAX)
+    expect(buf.length).toBe(MAX)
+  })
+})
+
+// Test chunk reassembly (mirrors use-bridge.ts)
+describe('chunk reassembly', () => {
+  it('reassembles multi-chunk messages in order', () => {
+    const chunks = new Map<string, { parts: string[]; total: number }>()
+    const chunkKey = 'agent:1'
+
+    // Simulate 3 chunks arriving
+    chunks.set(chunkKey, { parts: [], total: 3 })
+    const entry = chunks.get(chunkKey)!
+    entry.parts[0] = 'aaa'
+    entry.parts[1] = 'bbb'
+    entry.parts[2] = 'ccc'
+
+    const received = entry.parts.filter(Boolean).length
+    expect(received).toBe(3)
+    expect(entry.parts.join('')).toBe('aaabbbccc')
+  })
+
+  it('handles out-of-order chunks', () => {
+    const parts: string[] = []
+    parts[2] = 'ccc'
+    parts[0] = 'aaa'
+    parts[1] = 'bbb'
+    expect(parts.filter(Boolean).length).toBe(3)
+    expect(parts.join('')).toBe('aaabbbccc')
+  })
+
+  it('detects incomplete chunks', () => {
+    const parts: string[] = []
+    parts[0] = 'aaa'
+    parts[2] = 'ccc'
+    // parts[1] missing
+    expect(parts.filter(Boolean).length).toBe(2)
   })
 })

@@ -185,28 +185,25 @@ function TranslationPanel({ bridgeOnline, selectedAgent, agents, agentStates, ou
   }, [])
 
   // Detect task completion: busy → ready transition
+  const agentState = selectedAgent ? agentStates[selectedAgent] : undefined
   useEffect(() => {
-    if (!selectedAgent) return
-    const currentState = agentStates[selectedAgent]
-    const prevState = prevAgentState.current
-    prevAgentState.current = currentState ?? null
+    const prev = prevAgentState.current
+    prevAgentState.current = agentState ?? null
 
-    if (prevState === 'busy' && currentState === 'ready') {
+    if (prev === 'busy' && agentState === 'ready') {
       setTaskCompleted(true)
-      // Auto-translate on completion if key available
-      if (!needsKey && prefs.autoTranslate && outputBuffer.trim()) {
-        translate(outputBuffer)
-        lastTranslatedLen.current = outputBuffer.length
-      }
-    }
-  }, [selectedAgent, agentStates, needsKey, prefs.autoTranslate, outputBuffer, translate])
-
-  // Reset completion flag when agent starts working again
-  useEffect(() => {
-    if (selectedAgent && agentStates[selectedAgent] === 'busy') {
+    } else if (agentState === 'busy') {
       setTaskCompleted(false)
     }
-  }, [selectedAgent, agentStates])
+  }, [agentState])
+
+  // Auto-translate on task completion
+  useEffect(() => {
+    if (taskCompleted && !needsKey && prefs.autoTranslate && outputBuffer.trim()) {
+      translate(outputBuffer)
+      lastTranslatedLen.current = outputBuffer.length
+    }
+  }, [taskCompleted]) // eslint-disable-line -- intentionally fires once on completion
 
   // Auto-translate when new output accumulates (debounced)
   useEffect(() => {
@@ -299,7 +296,7 @@ function TranslationPanel({ bridgeOnline, selectedAgent, agents, agentStates, ou
           </Card>
         )}
 
-        {bridgeOnline && outputBuffer.length === 0 && !needsKey && (
+        {bridgeOnline && outputBuffer.length === 0 && (!needsKey || keyDismissed) && (
           <Card>
             <p className="text-sm text-[var(--muted)] text-center py-4">
               Bridge connected. Waiting for agent output...
@@ -356,7 +353,7 @@ function TranslationPanel({ bridgeOnline, selectedAgent, agents, agentStates, ou
           </div>
         )}
 
-        {outputBuffer.length > 0 && !lastTranslation && !translating && !needsKey && (
+        {outputBuffer.length > 0 && !lastTranslation && !translating && !needsKey && !taskCompleted && (
           <div className="flex justify-center">
             <button
               onClick={handleCatchUp}
