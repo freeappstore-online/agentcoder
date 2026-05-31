@@ -2,6 +2,7 @@
 import WebSocket from "ws";
 var RECONNECT_BASE_MS = 1e3;
 var RECONNECT_MAX_MS = 3e4;
+var MAX_RECONNECT_ATTEMPTS = 15;
 var API_BASE = "wss://api.freeappstore.online";
 var RoomClient = class {
   constructor(appId, roomId, token, apiBase = API_BASE) {
@@ -19,16 +20,21 @@ var RoomClient = class {
   listeners = [];
   stateListeners = [];
   peerListeners = [];
+  errorListeners = [];
   _peers = [];
   connectionState = "connecting";
   reconnectAttempt = 0;
   reconnectTimer = null;
   closed = false;
+  _authFailed = false;
   get state() {
     return this.connectionState;
   }
   get peers() {
     return this._peers;
+  }
+  get authFailed() {
+    return this._authFailed;
   }
   send(data) {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
@@ -53,6 +59,12 @@ var RoomClient = class {
       this.peerListeners = this.peerListeners.filter((l) => l !== listener);
     };
   }
+  onError(listener) {
+    this.errorListeners.push(listener);
+    return () => {
+      this.errorListeners = this.errorListeners.filter((l) => l !== listener);
+    };
+  }
   close() {
     this.closed = true;
     if (this.reconnectTimer) {
@@ -74,6 +86,24 @@ var RoomClient = class {
       this.reconnectAttempt = 0;
       this.setState("open");
     });
+    socket.on("unexpected-response", (_req, res) => {
+      res.resume();
+      const status = res.statusCode ?? 0;
+      if (status === 401 || status === 403) {
+        this._authFailed = true;
+        this.emitError("Token expired or invalid. Run: agentcoder login");
+        this.closed = true;
+        this.setState("error");
+      } else if (status === 404) {
+        this.emitError("Room not found (404). Check the app ID and session ID.");
+        this.closed = true;
+        this.setState("error");
+      } else if (status === 429) {
+        this.emitError("Rate limited (429). Too many connections \u2014 wait a minute and try again.");
+        this.closed = true;
+        this.setState("error");
+      }
+    });
     socket.on("message", (raw) => {
       try {
         const parsed = JSON.parse(raw.toString());
@@ -85,6 +115,7 @@ var RoomClient = class {
           this._peers = parsed.peers;
           for (const l of this.peerListeners) l(this._peers);
         } else if (parsed.kind === "error") {
+          this.emitError(parsed.error);
         }
       } catch {
       }
@@ -100,6 +131,14 @@ var RoomClient = class {
   }
   scheduleReconnect() {
     if (this.reconnectTimer || this.closed) return;
+    if (this.reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+      this.emitError(
+        `Could not connect after ${MAX_RECONNECT_ATTEMPTS} attempts. Check your network connection and try again.`
+      );
+      this.closed = true;
+      this.setState("error");
+      return;
+    }
     const backoff = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** this.reconnectAttempt);
     const jitter = Math.random() * 1e3;
     this.reconnectAttempt++;
@@ -113,25 +152,38 @@ var RoomClient = class {
     this.connectionState = state;
     for (const l of this.stateListeners) l(state);
   }
+  emitError(reason) {
+    for (const l of this.errorListeners) l(reason);
+  }
 };
 
 // src/tmux.ts
 import { execFileSync } from "child_process";
+var TMUX_CMD_TIMEOUT_MS = 5e3;
+var SESSION_CHECK_TIMEOUT_MS = 3e3;
 function stripAnsi(str) {
   return str.replace(
     /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g,
     ""
   );
 }
+function isTmuxAvailable() {
+  try {
+    execFileSync("tmux", ["-V"], { encoding: "utf-8", timeout: SESSION_CHECK_TIMEOUT_MS, stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
 function tmux(...args) {
   try {
-    return execFileSync("tmux", args, { encoding: "utf-8", timeout: 5e3 });
+    return execFileSync("tmux", args, { encoding: "utf-8", timeout: TMUX_CMD_TIMEOUT_MS });
   } catch {
     return "";
   }
 }
 function getTarget(sessionName) {
-  const output = tmux(
+  const paneLines = tmux(
     "list-panes",
     "-t",
     sessionName,
@@ -139,8 +191,8 @@ function getTarget(sessionName) {
     "-F",
     "#{session_name}:#{window_index}.#{pane_index} #{window_name} #{pane_title}"
   );
-  if (!output.trim()) return sessionName;
-  const lines = output.trim().split("\n");
+  if (!paneLines.trim()) return sessionName;
+  const lines = paneLines.trim().split("\n");
   for (const line of lines) {
     const lower = line.toLowerCase();
     if (lower.includes("claude") || lower.includes("\u2733")) {
@@ -151,7 +203,7 @@ function getTarget(sessionName) {
   return sessionName;
 }
 function listWindows(sessionName) {
-  const output = tmux(
+  const paneLines = tmux(
     "list-panes",
     "-t",
     sessionName,
@@ -159,10 +211,10 @@ function listWindows(sessionName) {
     "-F",
     "#{session_name}:#{window_index}.#{pane_index}	#{window_index}	#{window_name}	#{pane_title}"
   );
-  if (!output.trim()) return [];
+  if (!paneLines.trim()) return [];
   const seen = /* @__PURE__ */ new Set();
   const windows = [];
-  for (const line of output.trim().split("\n")) {
+  for (const line of paneLines.trim().split("\n")) {
     const [target, idxStr, windowName, paneTitle] = line.split("	");
     if (!target) continue;
     const windowIndex = parseInt(idxStr ?? "0", 10);
@@ -182,15 +234,15 @@ function listWindows(sessionName) {
 }
 function sessionExists(name) {
   try {
-    execFileSync("tmux", ["has-session", "-t", name], { timeout: 3e3, stdio: "pipe" });
+    execFileSync("tmux", ["has-session", "-t", name], { timeout: SESSION_CHECK_TIMEOUT_MS, stdio: "pipe" });
     return true;
   } catch {
     return false;
   }
 }
 function listSessions() {
-  const output = tmux("list-sessions", "-F", "#{session_name}");
-  return output.trim().split("\n").filter(Boolean);
+  const sessionList = tmux("list-sessions", "-F", "#{session_name}");
+  return sessionList.trim().split("\n").filter(Boolean);
 }
 function captureScreen(target, lines = 500) {
   const raw = tmux("capture-pane", "-p", "-J", "-S", `-${lines}`, "-t", target);
@@ -256,6 +308,9 @@ var Bridge = class {
       if (s === "open") this.events.onConnected?.();
       else if (s === "closed") this.events.onDisconnected?.();
     });
+    this.room.onError((reason) => {
+      this.events.onError?.(reason);
+    });
     this.room.onMessage((msg) => {
       this.handleMessage(msg);
     });
@@ -293,20 +348,20 @@ var Bridge = class {
     this.room.close();
   }
   handleMessage(msg) {
-    const data = msg.data;
-    if (!data || !data.type) return;
-    switch (data.type) {
+    const payload = msg.data;
+    if (!payload || !payload.type) return;
+    switch (payload.type) {
       case "command": {
-        this.events.onCommand?.(msg.from.login, data.agent, data.text);
-        if (sessionExists(data.agent)) {
-          const target = this.targetOverrides.get(data.agent) ?? getTarget(data.agent);
-          sendKeys(target, data.text);
+        this.events.onCommand?.(msg.from.login, payload.agent, payload.text);
+        if (sessionExists(payload.agent)) {
+          const target = this.targetOverrides.get(payload.agent) ?? getTarget(payload.agent);
+          sendKeys(target, payload.text);
           sendSpecialKey(target, "Enter");
         }
         break;
       }
       case "control": {
-        const { agent, action } = data;
+        const { agent, action } = payload;
         this.events.onControl?.(msg.from.login, action);
         if (!sessionExists(agent)) break;
         const target = this.targetOverrides.get(agent) ?? getTarget(agent);
@@ -390,6 +445,8 @@ var Bridge = class {
 };
 
 export {
+  isTmuxAvailable,
   listWindows,
+  listSessions,
   Bridge
 };

@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import {
   Bridge,
+  isTmuxAvailable,
+  listSessions,
   listWindows
-} from "./chunk-PYHJA76E.js";
+} from "./chunk-EKQCVSMR.js";
 
 // src/tui.ts
 import readline from "readline";
@@ -73,6 +75,14 @@ var Tui = class {
     this.state.connected = connected;
     this.render();
   }
+  setError(reason) {
+    this.stop();
+    process.stderr.write(`
+${c(RED + BOLD, "Error:")} ${reason}
+
+`);
+    this.actionResolve?.("quit");
+  }
   setPeers(peers) {
     this.state.peers = peers;
     this.render();
@@ -129,11 +139,11 @@ var Tui = class {
   }
   /** Returns map of session name → explicit target (or undefined for auto-detect) */
   getWatchedMap() {
-    const map = /* @__PURE__ */ new Map();
+    const watched = /* @__PURE__ */ new Map();
     for (const s of this.state.sessions.values()) {
-      if (s.watched) map.set(s.name, s.target);
+      if (s.watched) watched.set(s.name, s.target);
     }
-    return map;
+    return watched;
   }
   getWatched() {
     return [...this.state.sessions.values()].filter((s) => s.watched).map((s) => s.name);
@@ -244,9 +254,9 @@ var Tui = class {
     } else if (ch === "down" || ch === "j") {
       this.pickerCursor = (this.pickerCursor + 1) % total;
     } else if (ch === "right") {
-      const item = this.pickerItems[this.pickerCursor];
-      if (item && !item.indent) {
-        this.expanded = this.expanded === item.key ? null : item.key;
+      const cursorEntry = this.pickerItems[this.pickerCursor];
+      if (cursorEntry && !cursorEntry.indent) {
+        this.expanded = this.expanded === cursorEntry.key ? null : cursorEntry.key;
         this.rebuildPickerItems();
       }
     } else if (ch === "left") {
@@ -255,17 +265,17 @@ var Tui = class {
         this.rebuildPickerItems();
       }
     } else if (ch === "space") {
-      const item = this.pickerItems[this.pickerCursor];
-      if (!item) return;
-      if (item.indent) {
-        const [sessionName, target] = item.key.split("=");
+      const selectedEntry = this.pickerItems[this.pickerCursor];
+      if (!selectedEntry) return;
+      if (selectedEntry.indent) {
+        const [sessionName, target] = selectedEntry.key.split("=");
         const session = this.state.sessions.get(sessionName);
         if (session) {
           session.watched = true;
           session.target = target;
         }
       } else {
-        const session = this.state.sessions.get(item.key);
+        const session = this.state.sessions.get(selectedEntry.key);
         if (session) {
           session.watched = !session.watched;
           if (!session.watched) session.target = void 0;
@@ -303,18 +313,18 @@ var Tui = class {
     lines.push(`  ${c(WHITE + BOLD, "Select sessions to monitor")}`);
     lines.push("");
     for (let i = 0; i < this.pickerItems.length; i++) {
-      const item = this.pickerItems[i];
+      const pickerEntry = this.pickerItems[i];
       const isCursor = i === this.pickerCursor;
-      if (item.indent) {
+      if (pickerEntry.indent) {
         const prefix = "    ";
-        const marker = item.isClaude ? c(GREEN, "\u2733") : c(DIM, "\xB7");
-        const label = isCursor ? c(INVERSE + WHITE, ` ${item.label} `) : c(GRAY, ` ${item.label}`);
+        const marker = pickerEntry.isClaude ? c(GREEN, "\u2733") : c(DIM, "\xB7");
+        const label = isCursor ? c(INVERSE + WHITE, ` ${pickerEntry.label} `) : c(GRAY, ` ${pickerEntry.label}`);
         lines.push(`${prefix}${marker} ${label}`);
       } else {
-        const session = this.state.sessions.get(item.key);
+        const session = this.state.sessions.get(pickerEntry.key);
         const check = session.watched ? c(GREEN, "\u25C9") : c(DIM, "\u25CB");
-        const arrow = this.expanded === item.key ? c(DIM, "\u25BC") : c(DIM, "\u25B8");
-        const label = isCursor ? c(INVERSE + WHITE, ` ${item.label} `) : c(WHITE, ` ${item.label}`);
+        const arrow = this.expanded === pickerEntry.key ? c(DIM, "\u25BC") : c(DIM, "\u25B8");
+        const label = isCursor ? c(INVERSE + WHITE, ` ${pickerEntry.label} `) : c(WHITE, ` ${pickerEntry.label}`);
         const targetHint = session.target ? c(DIM, ` \u2192 ${session.target}`) : "";
         lines.push(`  ${check} ${arrow}${label}${targetHint}`);
       }
@@ -421,8 +431,11 @@ var APP_URL = "https://agentcoder.space";
 function loadCredentials() {
   if (!existsSync(CREDS_FILE)) return null;
   try {
-    return JSON.parse(readFileSync(CREDS_FILE, "utf-8"));
+    const parsed = JSON.parse(readFileSync(CREDS_FILE, "utf-8"));
+    if (!parsed.token || typeof parsed.token !== "string") return null;
+    return parsed;
   } catch {
+    console.error(`Warning: credentials file is corrupted (${CREDS_FILE}). Run: agentcoder login`);
     return null;
   }
 }
@@ -498,9 +511,80 @@ function login() {
     server.on("close", () => clearTimeout(timer));
   });
 }
+function parseStartArgs(cliArgs) {
+  let sessionId = "";
+  let token = "";
+  let apiBase;
+  let watchList;
+  const hasValue = (i) => i + 1 < cliArgs.length && !cliArgs[i + 1].startsWith("--");
+  for (let i = 1; i < cliArgs.length; i++) {
+    if (cliArgs[i] === "--session" && hasValue(i)) {
+      sessionId = cliArgs[++i];
+    } else if (cliArgs[i] === "--token" && hasValue(i)) {
+      token = cliArgs[++i];
+    } else if (cliArgs[i] === "--api" && hasValue(i)) {
+      apiBase = cliArgs[++i];
+    } else if (cliArgs[i] === "--watch" && hasValue(i)) {
+      watchList = cliArgs[++i].split(",").map((s) => s.trim()).filter(Boolean);
+    }
+  }
+  if (!sessionId || !token) {
+    const saved = loadCredentials();
+    if (saved) {
+      sessionId = sessionId || saved.sessionId;
+      token = token || saved.token;
+    }
+  }
+  return { sessionId, token, apiBase, watchList };
+}
+async function handleStart(cliArgs) {
+  const { sessionId, token, apiBase, watchList } = parseStartArgs(cliArgs);
+  if (!token) {
+    console.error("Not logged in. Run: agentcoder login");
+    process.exit(1);
+  }
+  if (!sessionId) {
+    console.error("Error: --session <id> is required");
+    console.error("Use the same session ID shown in the web UI.");
+    process.exit(1);
+  }
+  if (!isTmuxAvailable()) {
+    console.error("Error: tmux is not installed or not in PATH.");
+    console.error("Install it with: brew install tmux (macOS) or apt install tmux (Linux)");
+    process.exit(1);
+  }
+  const sessions = listSessions();
+  if (sessions.length === 0) {
+    console.error("No tmux sessions found. Start a tmux session first:");
+    console.error("  tmux new -s mysession");
+    process.exit(1);
+  }
+  saveCredentials({ token, sessionId });
+  const tui = new Tui(sessionId);
+  if (watchList) tui.setInitialWatch(watchList);
+  const bridge = new Bridge({ token, sessionId, apiBase, watchList }, {
+    onConnected: () => tui.setConnected(true),
+    onDisconnected: () => tui.setConnected(false),
+    onError: (reason) => tui.setError(reason),
+    onPeers: (peers) => tui.setPeers(peers),
+    onSessions: (names) => tui.discoverSessions(names),
+    onSessionState: (agent, state) => tui.updateSession(agent, state),
+    onOutput: (agent, bytes) => tui.recordOutput(agent, bytes),
+    onCommand: (from, agent, text) => tui.recordCommand(from, agent, text),
+    onControl: (from, action2) => tui.recordControl(from, action2)
+  });
+  bridge.start();
+  const action = await tui.start(
+    (watched) => bridge.setWatchList(watched),
+    (session) => listWindows(session)
+  );
+  tui.stop();
+  bridge.stop();
+  if (action === "quit") process.exit(0);
+}
 async function main() {
-  const args = process.argv.slice(2);
-  const command = args[0];
+  const cliArgs = process.argv.slice(2);
+  const command = cliArgs[0];
   if (!command || command === "help" || command === "--help") {
     printUsage();
     process.exit(0);
@@ -530,58 +614,7 @@ async function main() {
     process.exit(0);
   }
   if (command === "start") {
-    let sessionId = "";
-    let token = "";
-    let apiBase;
-    let watchList;
-    for (let i = 1; i < args.length; i++) {
-      if (args[i] === "--session" && args[i + 1]) {
-        sessionId = args[++i];
-      } else if (args[i] === "--token" && args[i + 1]) {
-        token = args[++i];
-      } else if (args[i] === "--api" && args[i + 1]) {
-        apiBase = args[++i];
-      } else if (args[i] === "--watch" && args[i + 1]) {
-        watchList = args[++i].split(",").map((s) => s.trim()).filter(Boolean);
-      }
-    }
-    if (!sessionId || !token) {
-      const saved = loadCredentials();
-      if (saved) {
-        sessionId = sessionId || saved.sessionId;
-        token = token || saved.token;
-      }
-    }
-    if (!token) {
-      console.error("Not logged in. Run: agentcoder login");
-      process.exit(1);
-    }
-    if (!sessionId) {
-      console.error("Error: --session <id> is required");
-      console.error("Use the same session ID shown in the web UI.");
-      process.exit(1);
-    }
-    saveCredentials({ token, sessionId });
-    const tui = new Tui(sessionId);
-    if (watchList) tui.setInitialWatch(watchList);
-    const bridge = new Bridge({ token, sessionId, apiBase, watchList }, {
-      onConnected: () => tui.setConnected(true),
-      onDisconnected: () => tui.setConnected(false),
-      onPeers: (peers) => tui.setPeers(peers),
-      onSessions: (names) => tui.discoverSessions(names),
-      onSessionState: (agent, state) => tui.updateSession(agent, state),
-      onOutput: (agent, bytes) => tui.recordOutput(agent, bytes),
-      onCommand: (from, agent, text) => tui.recordCommand(from, agent, text),
-      onControl: (from, action2) => tui.recordControl(from, action2)
-    });
-    bridge.start();
-    const action = await tui.start(
-      (watched) => bridge.setWatchList(watched),
-      (session) => listWindows(session)
-    );
-    tui.stop();
-    bridge.stop();
-    if (action === "quit") process.exit(0);
+    await handleStart(cliArgs);
   } else {
     console.error(`Unknown command: ${command}`);
     printUsage();
@@ -589,3 +622,6 @@ async function main() {
   }
 }
 main();
+export {
+  parseStartArgs
+};

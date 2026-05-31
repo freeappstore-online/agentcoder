@@ -7,6 +7,7 @@ interface BridgeConfig {
 interface BridgeEvents {
     onConnected?: () => void;
     onDisconnected?: () => void;
+    onError?: (reason: string) => void;
     onPeers?: (peers: string[]) => void;
     onSessions?: (names: string[]) => void;
     onSessionState?: (agent: string, state: 'ready' | 'busy' | 'waiting') => void;
