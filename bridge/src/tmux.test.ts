@@ -55,6 +55,19 @@ describe('detectState', () => {
     expect(detectState('I was reading the docs and found\n❯ ')).toBe('ready')
   })
 
+  it('does NOT false-positive on capitalized status words mid-line', () => {
+    // Claude's response text can contain "Reading" or "Writing" in prose
+    expect(detectState('Reading through the code, I found the issue.\n❯ ')).toBe('ready')
+    expect(detectState('I started Writing the tests for auth.ts.\n❯ ')).toBe('ready')
+    expect(detectState('The agent is Working on the refactor.\n❯ ')).toBe('ready')
+  })
+
+  it('detects busy from status labels at start of line', () => {
+    expect(detectState('  Working')).toBe('busy')
+    expect(detectState('⏺ Reading file.ts')).toBe('busy')
+    expect(detectState('Thinking about the problem')).toBe('busy')
+  })
+
   it('returns waiting for unknown/ambiguous screens', () => {
     expect(detectState('$ npm test\nPASS all tests')).toBe('waiting')
   })
@@ -71,8 +84,13 @@ describe('detectState', () => {
     expect(detectState('Done.\n\n❯ \n\n')).toBe('ready')
   })
 
-  it('busy takes priority over ready', () => {
+  it('ctrl+c to interrupt takes priority over prompt', () => {
     expect(detectState('ctrl+c to interrupt\n❯ ')).toBe('busy')
+  })
+
+  it('prompt takes priority over status words in response text', () => {
+    // Status words in Claude's response text shouldn't override the prompt
+    expect(detectState('Writing tests for the module\n❯ ')).toBe('ready')
   })
 })
 
@@ -138,6 +156,12 @@ describe('extractResponse', () => {
     const response = extractResponse(captured, 'explain this code')
     expect(response).toContain('This function does X')
     expect(response).toContain('It works by Y')
+  })
+
+  it('returns full capture for empty userInput', () => {
+    const captured = 'some output\nmore output\n❯ '
+    expect(extractResponse(captured, '')).toBe(captured)
+    expect(extractResponse(captured, '   ')).toBe(captured)
   })
 
   it('falls back to input anywhere when no ❯ prefix', () => {

@@ -265,11 +265,13 @@ function isClaudeReady(screen) {
 }
 function isClaudeProcessing(screen) {
   if (screen.includes("ctrl+c to interrupt")) return true;
-  return /Working|Thinking|Reading|Searching|Running|Editing|Writing/.test(screen);
+  const tail = screen.split("\n").slice(-5).join("\n");
+  return /^\s*(?:⏺\s*)?(?:Working|Thinking|Reading|Searching|Running|Editing|Writing)\b/m.test(tail);
 }
 function detectState(screen) {
-  if (isClaudeProcessing(screen)) return "busy";
+  if (screen.includes("ctrl+c to interrupt")) return "busy";
   if (isClaudeReady(screen)) return "ready";
+  if (isClaudeProcessing(screen)) return "busy";
   return "waiting";
 }
 
@@ -383,6 +385,7 @@ var Bridge = class {
     }
   }
   pollSessions() {
+    if (this.room.state !== "open") return;
     const allSessions = listSessions();
     this.events.onSessions?.(allSessions);
     const sessions = this.watchSet ? allSessions.filter((s) => this.watchSet.has(s)) : [];

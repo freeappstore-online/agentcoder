@@ -27,7 +27,7 @@ export function useBridge(room: Room | null, log?: EventLog) {
     agentBuffers: {},
   })
 
-  const chunks = useRef<Map<string, { parts: string[]; total: number }>>(new Map())
+  const chunks = useRef<Map<string, { parts: string[]; total: number; startedAt: number }>>(new Map())
   const lastHeartbeat = useRef(0)
 
   useEffect(() => {
@@ -88,7 +88,7 @@ export function useBridge(room: Room | null, log?: EventLog) {
             const chunkKey = `${messagePayload.agent}:${messagePayload.session}`
             let entry = chunks.current.get(chunkKey)
             if (!entry || messagePayload.seq === 0) {
-              entry = { parts: [], total: messagePayload.total }
+              entry = { parts: [], total: messagePayload.total, startedAt: Date.now() }
               chunks.current.set(chunkKey, entry)
             }
             entry.parts[messagePayload.seq] = messagePayload.content
@@ -109,6 +109,16 @@ export function useBridge(room: Room | null, log?: EventLog) {
       }
     })
 
+    // Clean up stale partial chunks (>30s old) to prevent memory leaks
+    const chunkCleanup = setInterval(() => {
+      const now = Date.now()
+      for (const [chunkKey, entry] of chunks.current) {
+        if (now - entry.startedAt > 30_000) {
+          chunks.current.delete(chunkKey)
+        }
+      }
+    }, 30_000)
+
     const heartbeatCheck = setInterval(() => {
       if (lastHeartbeat.current > 0 && Date.now() - lastHeartbeat.current > 60_000) {
         setState((prev) => {
@@ -124,6 +134,7 @@ export function useBridge(room: Room | null, log?: EventLog) {
     return () => {
       unsubState()
       unsubMsg()
+      clearInterval(chunkCleanup)
       clearInterval(heartbeatCheck)
       chunks.current.clear()
       lastHeartbeat.current = 0

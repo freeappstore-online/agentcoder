@@ -165,16 +165,21 @@ function isClaudeReady(screen: string): boolean {
 /** Check if Claude Code is actively processing */
 function isClaudeProcessing(screen: string): boolean {
   if (screen.includes('ctrl+c to interrupt')) return true
-  // Case-sensitive — these are Claude Code's exact status labels
-  return /Working|Thinking|Reading|Searching|Running|Editing|Writing/.test(screen)
+  // Check only the last 5 lines — Claude's status bar is always near the bottom.
+  // Prevents false positives on response text like "Reading through the code..."
+  const tail = screen.split('\n').slice(-5).join('\n')
+  return /^\s*(?:⏺\s*)?(?:Working|Thinking|Reading|Searching|Running|Editing|Writing)\b/m.test(tail)
 }
 
 type AgentState = 'ready' | 'busy' | 'waiting'
 
 /** Detect agent state from screen content */
 export function detectState(screen: string): AgentState {
-  if (isClaudeProcessing(screen)) return 'busy'
+  // "ctrl+c to interrupt" is the strongest busy signal — always wins
+  if (screen.includes('ctrl+c to interrupt')) return 'busy'
+  // Prompt indicators mean ready, even if status words appear in response text
   if (isClaudeReady(screen)) return 'ready'
+  if (isClaudeProcessing(screen)) return 'busy'
   return 'waiting'
 }
 
@@ -187,6 +192,7 @@ export function detectState(screen: string): AgentState {
  * stripping the user's input line and the trailing prompt.
  */
 export function extractResponse(captured: string, userInput: string): string {
+  if (!userInput.trim()) return captured
   const lines = captured.split('\n')
   const inputPrefix = userInput.slice(0, 25)
 
