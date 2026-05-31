@@ -57,10 +57,19 @@ export function useBridge(room: Room | null, log?: EventLog) {
 
         case 'status':
           logRef.current?.info(`Agent ${messagePayload.agent}: ${messagePayload.state}`)
-          setState((prev) => ({
-            ...prev,
-            agentStates: { ...prev.agentStates, [messagePayload.agent]: messagePayload.state },
-          }))
+          setState((prev) => {
+            // Discover agents from status messages (don't wait for heartbeat)
+            const agents = prev.agents.includes(messagePayload.agent)
+              ? prev.agents
+              : [...prev.agents, messagePayload.agent]
+            return {
+              ...prev,
+              agents,
+              bridgeOnline: true,
+              bridgeWasOnline: true,
+              agentStates: { ...prev.agentStates, [messagePayload.agent]: messagePayload.state },
+            }
+          })
           break
 
         case 'output': {

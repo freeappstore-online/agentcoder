@@ -22,7 +22,7 @@ interface TranslationPanelProps {
 }
 
 export function TranslationPanel({ app, log, bridgeOnline, bridgeWasOnline, selectedAgent, agents, agentStates, outputBuffer, onSelectAgent, send }: TranslationPanelProps) {
-  const { translating, lastTranslation, error, translate, compose } = useTranslator(app, log)
+  const { translating, lastTranslation, error, translate, compose, reset: resetTranslation } = useTranslator(app, log)
   const voice = useVoiceInput()
   const [input, setInput] = useState('')
   const [needsKey, setNeedsKey] = useState(true)
@@ -48,6 +48,17 @@ export function TranslationPanel({ app, log, bridgeOnline, bridgeWasOnline, sele
     window.addEventListener('focus', check)
     return () => window.removeEventListener('focus', check)
   }, [])
+
+  // Reset translation state when switching agents
+  const prevAgent = useRef(selectedAgent)
+  useEffect(() => {
+    if (prevAgent.current !== selectedAgent) {
+      prevAgent.current = selectedAgent
+      resetTranslation()
+      lastTranslatedLen.current = 0
+      setTaskCompleted(false)
+    }
+  }, [selectedAgent, resetTranslation])
 
   // Detect task completion: busy -> ready transition
   const agentState = selectedAgent ? agentStates[selectedAgent] : undefined

@@ -148,6 +148,10 @@ export class Bridge {
   }
 
   private pollSessions(): void {
+    // Don't poll when room is disconnected — saves CPU and prevents
+    // misleading byte counts for data that can't be sent
+    if (this.room.state !== 'open') return
+
     const allSessions = tmux.listSessions()
     this.events.onSessions?.(allSessions)
 

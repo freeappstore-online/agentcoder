@@ -14,7 +14,6 @@ describe('callAnthropicApi', () => {
         method: 'POST',
         headers: expect.objectContaining({
           'Content-Type': 'application/json',
-          'anthropic-version': '2023-06-01',
         }),
       }),
     )

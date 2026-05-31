@@ -183,5 +183,10 @@ export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
     [app],
   )
 
-  return { ...state, translate, compose }
+  const reset = useCallback(() => {
+    abortRef.current?.abort()
+    setState({ translating: false, lastTranslation: null, error: null })
+  }, [])
+
+  return { ...state, translate, compose, reset }
 }
