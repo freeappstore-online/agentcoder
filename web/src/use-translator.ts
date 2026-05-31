@@ -30,6 +30,7 @@ export function callAnthropicApi(app: FreeAppStore, body: object, signal?: Abort
     'api.anthropic.com/v1/messages',
     {
       method: 'POST',
+      credentials: 'omit' as RequestCredentials,
       headers: {
         'Content-Type': 'application/json',
         'anthropic-version': '2023-06-01',
@@ -175,7 +176,9 @@ export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
         logRef.current?.info(`Compose complete: "${composed.slice(0, 50)}"`)
         return composed
       } catch (err) {
+        const raw = (err as Error).message ?? String(err)
         logRef.current?.error(`Compose failed: ${describeError(err)}`)
+        if (raw !== describeError(err)) logRef.current?.error(`Raw error: ${raw}`)
         return userIntent
       }
     },
