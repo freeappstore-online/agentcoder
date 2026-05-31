@@ -164,8 +164,11 @@ function TranslationPanel({ bridgeOnline, selectedAgent, agents, agentStates, ou
   const voice = useVoiceInput()
   const [input, setInput] = useState('')
   const [needsKey, setNeedsKey] = useState(true)
+  const [keyDismissed, setKeyDismissed] = useState(false)
   const [prefs, setPrefs] = useState({ autoTranslate: true, translateDebounce: 3 })
+  const [taskCompleted, setTaskCompleted] = useState(false)
   const lastTranslatedLen = useRef(0)
+  const prevAgentState = useRef<string | null>(null)
   const outputRef = useRef<HTMLDivElement>(null)
 
   // Load prefs from KV
@@ -173,13 +176,37 @@ function TranslationPanel({ bridgeOnline, selectedAgent, agents, agentStates, ou
     fas.kv.get<typeof prefs>('prefs').then((p) => { if (p) setPrefs(p) }).catch(() => {})
   }, [])
 
-  // Check if user has an API key for translation (re-check on window focus for after key setup)
+  // Check if user has an API key
   useEffect(() => {
     const check = () => fas.keys.has('anthropic').then((has) => setNeedsKey(!has)).catch(() => setNeedsKey(true))
     check()
     window.addEventListener('focus', check)
     return () => window.removeEventListener('focus', check)
   }, [])
+
+  // Detect task completion: busy → ready transition
+  useEffect(() => {
+    if (!selectedAgent) return
+    const currentState = agentStates[selectedAgent]
+    const prevState = prevAgentState.current
+    prevAgentState.current = currentState ?? null
+
+    if (prevState === 'busy' && currentState === 'ready') {
+      setTaskCompleted(true)
+      // Auto-translate on completion if key available
+      if (!needsKey && prefs.autoTranslate && outputBuffer.trim()) {
+        translate(outputBuffer)
+        lastTranslatedLen.current = outputBuffer.length
+      }
+    }
+  }, [selectedAgent, agentStates, needsKey, prefs.autoTranslate, outputBuffer, translate])
+
+  // Reset completion flag when agent starts working again
+  useEffect(() => {
+    if (selectedAgent && agentStates[selectedAgent] === 'busy') {
+      setTaskCompleted(false)
+    }
+  }, [selectedAgent, agentStates])
 
   // Auto-translate when new output accumulates (debounced)
   useEffect(() => {
@@ -193,7 +220,7 @@ function TranslationPanel({ bridgeOnline, selectedAgent, agents, agentStates, ou
       }
     }, prefs.translateDebounce * 1000)
     return () => clearTimeout(timer)
-  }, [outputBuffer, translate, needsKey])
+  }, [outputBuffer, translate, needsKey, prefs])
 
   const handleCatchUp = () => {
     translate(outputBuffer)
@@ -280,13 +307,53 @@ function TranslationPanel({ bridgeOnline, selectedAgent, agents, agentStates, ou
           </Card>
         )}
 
-        {needsKey && bridgeOnline && (
-          <KeyPrompt
-            app={fas}
-            provider="anthropic"
-            providerName="Anthropic"
-            message="AgentCoder uses AI to translate terminal output into plain English. Add your Anthropic API key to enable the translation layer."
-          />
+        {needsKey && bridgeOnline && !keyDismissed && (
+          <div className="relative">
+            <button
+              onClick={() => setKeyDismissed(true)}
+              className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--ink)] text-xs"
+            >
+              Dismiss
+            </button>
+            <KeyPrompt
+              app={fas}
+              provider="anthropic"
+              providerName="Anthropic"
+              message="Add your Anthropic API key to enable AI summaries. Everything else works without it."
+            />
+          </div>
+        )}
+
+        {taskCompleted && (
+          <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/30 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
+                  Task completed
+                </h3>
+                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
+                  {selectedAgent} finished working
+                  {lastTranslation ? '' : needsKey ? ' — add API key for summaries' : ''}
+                </p>
+              </div>
+              {needsKey && outputBuffer.length > 0 && (
+                <button
+                  onClick={() => fas.keys.manage('anthropic')}
+                  className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+                >
+                  Add key for summary
+                </button>
+              )}
+              {!needsKey && !lastTranslation && !translating && outputBuffer.length > 0 && (
+                <button
+                  onClick={handleCatchUp}
+                  className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+                >
+                  Summarize
+                </button>
+              )}
+            </div>
+          </div>
         )}
 
         {outputBuffer.length > 0 && !lastTranslation && !translating && !needsKey && (
@@ -379,7 +446,7 @@ function TranslationPanel({ bridgeOnline, selectedAgent, agents, agentStates, ou
           <div className="flex flex-col gap-1">
             <button
               onClick={handleSend}
-              disabled={!input.trim() || !bridgeOnline}
+              disabled={!input.trim() || !bridgeOnline || !selectedAgent}
               className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-30"
               title="Send (Enter)"
             >
