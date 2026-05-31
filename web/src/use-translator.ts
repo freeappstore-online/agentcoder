@@ -30,10 +30,8 @@ export function callAnthropicApi(app: FreeAppStore, body: object, signal?: Abort
     'api.anthropic.com/v1/messages',
     {
       method: 'POST',
-      credentials: 'omit' as RequestCredentials,
       headers: {
         'Content-Type': 'application/json',
-        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(body),
       signal,
