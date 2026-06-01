@@ -8,6 +8,7 @@ import { TranslationPanel } from './TranslationPanel'
 import type { Room } from '@freeappstore/sdk'
 import { ConnectBridge } from './ConnectBridge'
 import { ProfilePage } from './ProfilePage'
+import { storageGet, storageRemove } from './safe-storage'
 import type { AgentState } from './types'
 
 const fas = initApp({ appId: 'agentcoder' })
@@ -143,14 +144,14 @@ export default function App() {
     if (room) {
       room.close()
       setRoom(null)
-      localStorage.removeItem('ac:session')
+      storageRemove('ac:session')
     }
   }, [room])
 
   // Auto-reconnect to last session
   useEffect(() => {
     if (!user || isCliAuth) return
-    const lastSession = localStorage.getItem('ac:session')
+    const lastSession = storageGet('ac:session')
     if (lastSession) {
       const joinedRoom = fas.rooms.join(lastSession)
       setRoom(joinedRoom)
@@ -198,7 +199,7 @@ export default function App() {
   return (
     <div className="flex min-h-[100dvh] flex-col">
       {room ? (
-        <SessionView sessionId={localStorage.getItem('ac:session') ?? ''} room={room} onDisconnect={disconnect} onSettings={() => setPage('profile')} />
+        <SessionView sessionId={storageGet('ac:session') ?? ''} room={room} onDisconnect={disconnect} onSettings={() => setPage('profile')} />
       ) : (
         <>
           <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2 sticky top-0 z-50">

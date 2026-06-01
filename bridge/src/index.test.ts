@@ -56,6 +56,35 @@ describe('chunkContent', () => {
   })
 })
 
+// Test lastScreens pruning (mirrors Bridge.setWatchList)
+function pruneScreens(lastScreens: Map<string, string>, watchSet: Set<string>): void {
+  for (const key of lastScreens.keys()) {
+    if (!watchSet.has(key)) lastScreens.delete(key)
+  }
+}
+
+describe('lastScreens pruning', () => {
+  it('removes sessions not in new watch set', () => {
+    const screens = new Map([['a', 'screenA'], ['b', 'screenB'], ['c', 'screenC']])
+    pruneScreens(screens, new Set(['a', 'c']))
+    expect(screens.has('a')).toBe(true)
+    expect(screens.has('b')).toBe(false)
+    expect(screens.has('c')).toBe(true)
+  })
+
+  it('keeps all entries when watch set matches', () => {
+    const screens = new Map([['x', 'sx'], ['y', 'sy']])
+    pruneScreens(screens, new Set(['x', 'y']))
+    expect(screens.size).toBe(2)
+  })
+
+  it('clears all entries when watch set is empty', () => {
+    const screens = new Map([['a', 'screenA'], ['b', 'screenB']])
+    pruneScreens(screens, new Set())
+    expect(screens.size).toBe(0)
+  })
+})
+
 // Test per-agent buffer replacement (mirrors use-bridge.ts)
 describe('per-agent buffers', () => {
   it('stores screen per agent', () => {

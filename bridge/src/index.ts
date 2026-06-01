@@ -88,10 +88,14 @@ export class Bridge {
     for (const [name, target] of watched) {
       if (target) this.targetOverrides.set(name, target)
     }
+    // Prune stale screen entries for sessions no longer watched
+    for (const key of this.lastScreens.keys()) {
+      if (!this.watchSet.has(key)) this.lastScreens.delete(key)
+    }
   }
 
   private replayCurrentScreens(): void {
-    if (!this.watchSet) return
+    if (!this.watchSet || this.room.state !== 'open') return
     for (const session of this.watchSet) {
       const screen = this.lastScreens.get(session)
       if (screen?.trim()) {

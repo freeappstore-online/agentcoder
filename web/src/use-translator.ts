@@ -71,6 +71,7 @@ export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
     error: null,
   })
   const abortRef = useRef<AbortController | null>(null)
+  const composeAbortRef = useRef<AbortController | null>(null)
 
   const translate = useCallback(
     async (terminalOutput: string) => {
@@ -139,6 +140,10 @@ export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
     async (userIntent: string, context: string): Promise<string> => {
       if (!app) return userIntent
 
+      composeAbortRef.current?.abort()
+      const controller = new AbortController()
+      composeAbortRef.current = controller
+
       logRef.current?.info(`Composing response for: "${userIntent.slice(0, 50)}"`)
 
       try {
@@ -161,7 +166,7 @@ export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
               ].join('\n'),
             },
           ],
-        })
+        }, controller.signal)
 
         if (!response.ok) {
           logRef.current?.error(`Compose failed (HTTP ${response.status})`)
@@ -174,6 +179,10 @@ export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
         logRef.current?.info(`Compose complete: "${composed.slice(0, 50)}"`)
         return composed
       } catch (err) {
+        if ((err as Error).name === 'AbortError') {
+          logRef.current?.info('Compose cancelled')
+          return userIntent
+        }
         const raw = (err as Error).message ?? String(err)
         logRef.current?.error(`Compose failed: ${describeError(err)}`)
         if (raw !== describeError(err)) logRef.current?.error(`Raw error: ${raw}`)
@@ -185,6 +194,7 @@ export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
 
   const reset = useCallback(() => {
     abortRef.current?.abort()
+    composeAbortRef.current?.abort()
     setState({ translating: false, lastTranslation: null, error: null })
   }, [])
 

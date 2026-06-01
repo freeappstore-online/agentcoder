@@ -28,14 +28,25 @@ export function TranslationPanel({ app, log, bridgeOnline, bridgeWasOnline, sele
   const [needsKey, setNeedsKey] = useState(true)
   const [keyDismissed, setKeyDismissed] = useState(false)
   const [prefs, setPrefs] = useState({ autoTranslate: true, translateDebounce: 3 })
+  const [prefsLoaded, setPrefsLoaded] = useState(false)
   const [taskCompleted, setTaskCompleted] = useState(false)
   const lastTranslatedLen = useRef(0)
   const prevAgentState = useRef<string | null>(null)
   const outputRef = useRef<HTMLDivElement>(null)
 
+  // Refs for values used in task-completion effect
+  const needsKeyRef = useRef(needsKey)
+  needsKeyRef.current = needsKey
+  const prefsRef = useRef(prefs)
+  prefsRef.current = prefs
+  const outputBufferRef = useRef(outputBuffer)
+  outputBufferRef.current = outputBuffer
+  const translateRef = useRef(translate)
+  translateRef.current = translate
+
   // Load prefs from KV
   useEffect(() => {
-    app.kv.get<typeof prefs>('prefs').then((p) => { if (p) setPrefs(p) }).catch(console.error)
+    app.kv.get<typeof prefs>('prefs').then((p) => { if (p) setPrefs(p) }).catch(console.error).finally(() => setPrefsLoaded(true))
   }, [])
 
   // Check if user has an API key
@@ -74,16 +85,20 @@ export function TranslationPanel({ app, log, bridgeOnline, bridgeWasOnline, sele
     }
   }, [agentState])
 
-  // Auto-translate on task completion
+  // Auto-translate on task completion (reads refs for current values)
   useEffect(() => {
-    if (taskCompleted && !needsKey && prefs.autoTranslate && outputBuffer.trim()) {
-      translate(outputBuffer)
-      lastTranslatedLen.current = outputBuffer.length
+    if (!taskCompleted || !prefsLoaded) return
+    if (needsKeyRef.current || !prefsRef.current.autoTranslate) return
+    const buf = outputBufferRef.current
+    if (buf.trim()) {
+      translateRef.current(buf)
+      lastTranslatedLen.current = buf.length
     }
-  }, [taskCompleted]) // eslint-disable-line -- intentionally fires once on completion
+  }, [taskCompleted, prefsLoaded])
 
   // Auto-translate when new output accumulates (debounced)
   useEffect(() => {
+    if (!prefsLoaded) return
     if (outputBuffer.length <= lastTranslatedLen.current) return
     if (needsKey || !prefs.autoTranslate) return
     const timer = setTimeout(() => {

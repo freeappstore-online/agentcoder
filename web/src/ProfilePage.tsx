@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { FreeAppStore, User } from '@freeappstore/sdk'
 import { Card } from '@freeappstore/sdk/ui'
+import { storageGet } from './safe-storage'
 
 interface KeyInfo {
   provider: string
@@ -180,7 +181,7 @@ export function ProfilePage({ app, user, onBack }: ProfilePageProps) {
               <div>
                 <div className="text-sm text-[var(--ink)]">Current session ID</div>
                 <p className="text-sm font-mono text-[var(--muted)] mt-1">
-                  {localStorage.getItem('ac:session') || 'Not connected'}
+                  {storageGet('ac:session') || 'Not connected'}
                 </p>
               </div>
             </Card>

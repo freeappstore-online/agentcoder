@@ -331,9 +331,12 @@ var Bridge = class {
     for (const [name, target] of watched) {
       if (target) this.targetOverrides.set(name, target);
     }
+    for (const key of this.lastScreens.keys()) {
+      if (!this.watchSet.has(key)) this.lastScreens.delete(key);
+    }
   }
   replayCurrentScreens() {
-    if (!this.watchSet) return;
+    if (!this.watchSet || this.room.state !== "open") return;
     for (const session of this.watchSet) {
       const screen = this.lastScreens.get(session);
       if (screen?.trim()) {

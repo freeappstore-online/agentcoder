@@ -4,6 +4,7 @@ import type { FreeAppStore } from '@freeappstore/sdk'
 import type { useVoiceInput } from '@freeappstore/sdk/hooks'
 import type { useTranslator } from './use-translator'
 import { CopyLine } from './ConnectBridge'
+import { storageGet } from './safe-storage'
 import type { AgentState } from './types'
 
 export function AgentTabs({ agents, selectedAgent, agentStates, onSelectAgent }: {
@@ -150,7 +151,7 @@ export function StatusContent({ app, bridgeOnline, bridgeWasOnline, outputBuffer
             <p className="text-sm font-medium text-[var(--ink)]">Bridge not connected</p>
             <p className="text-xs text-[var(--muted)]">Run this on your machine to connect:</p>
             <div className="text-sm font-mono bg-[var(--bg)] rounded-lg p-3 text-left">
-              <CopyLine text={`npx github:freeappstore-online/agentcoder start --session ${localStorage.getItem('ac:session') ?? ''}`} />
+              <CopyLine text={`npx github:freeappstore-online/agentcoder start --session ${storageGet('ac:session') ?? ''}`} />
             </div>
           </div>
         </Card>
@@ -167,7 +168,7 @@ export function StatusContent({ app, bridgeOnline, bridgeWasOnline, outputBuffer
               Check the bridge terminal for errors, or restart it:
             </p>
             <div className="text-sm font-mono bg-[var(--bg)] rounded-lg p-3 text-left">
-              <CopyLine text={`npx github:freeappstore-online/agentcoder start --session ${localStorage.getItem('ac:session') ?? ''}`} />
+              <CopyLine text={`npx github:freeappstore-online/agentcoder start --session ${storageGet('ac:session') ?? ''}`} />
             </div>
           </div>
         </div>
