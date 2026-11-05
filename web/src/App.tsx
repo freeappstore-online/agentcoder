@@ -1,15 +1,15 @@
-import { useState, useEffect, useCallback } from 'react'
-import { initApp } from '@freeappstore/sdk'
-import { SignInButton, ProfileMenu, BuildInfo, Spinner, Card, Footer } from '@freeappstore/sdk/ui'
-import { useAuth } from '@freeappstore/sdk/hooks'
-import { useBridge } from './use-bridge'
-import { useEventLog } from './use-event-log'
-import { TranslationPanel } from './TranslationPanel'
 import type { Room } from '@freeappstore/sdk'
+import { initApp } from '@freeappstore/sdk'
+import { useAuth } from '@freeappstore/sdk/hooks'
+import { BuildInfo, Card, Footer, ProfileMenu, SignInButton, Spinner } from '@freeappstore/sdk/ui'
+import { useCallback, useEffect, useState } from 'react'
 import { ConnectBridge } from './ConnectBridge'
 import { ProfilePage } from './ProfilePage'
 import { storageGet, storageRemove } from './safe-storage'
+import { TranslationPanel } from './TranslationPanel'
 import type { AgentState } from './types'
+import { useBridge } from './use-bridge'
+import { useEventLog } from './use-event-log'
 
 const fas = initApp({ appId: 'agentcoder' })
 
@@ -23,7 +23,15 @@ interface StatusBarProps {
   onSettings: () => void
 }
 
-function StatusBar({ sessionId, connected, bridgeOnline, agents, agentStates, onDisconnect, onSettings }: StatusBarProps) {
+function StatusBar({
+  sessionId,
+  connected,
+  bridgeOnline,
+  agents,
+  agentStates,
+  onDisconnect,
+  onSettings,
+}: StatusBarProps) {
   return (
     <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm sticky top-0 z-50">
       <span className="font-mono text-xs text-[var(--muted)]">{sessionId}</span>
@@ -39,23 +47,25 @@ function StatusBar({ sessionId, connected, bridgeOnline, agents, agentStates, on
         <span className="text-[var(--muted)]">
           <span className="text-[var(--ink)] font-medium">{agents[0]}</span>
           {agentStates[agents[0]] && (
-            <span className={`ml-1 ${agentStates[agents[0]] === 'busy' ? 'text-blue-500' : agentStates[agents[0]] === 'waiting' ? 'text-amber-500' : 'text-emerald-500'}`}>
+            <span
+              className={`ml-1 ${agentStates[agents[0]] === 'busy' ? 'text-blue-500' : agentStates[agents[0]] === 'waiting' ? 'text-amber-500' : 'text-emerald-500'}`}
+            >
               ({agentStates[agents[0]]})
             </span>
           )}
         </span>
       )}
-      {agents.length > 1 && (
-        <span className="text-[var(--muted)]">{agents.length} agents</span>
-      )}
+      {agents.length > 1 && <span className="text-[var(--muted)]">{agents.length} agents</span>}
       <div className="ml-auto flex items-center gap-2">
         <button
+          type="button"
           onClick={onSettings}
           className="rounded px-2 py-0.5 text-sm text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--bg)] transition-colors"
         >
           Settings
         </button>
         <button
+          type="button"
           onClick={onDisconnect}
           className="rounded px-2 py-0.5 text-sm text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--bg)] transition-colors"
         >
@@ -67,7 +77,17 @@ function StatusBar({ sessionId, connected, bridgeOnline, agents, agentStates, on
   )
 }
 
-function SessionView({ sessionId, room, onDisconnect, onSettings }: { sessionId: string; room: Room; onDisconnect: () => void; onSettings: () => void }) {
+function SessionView({
+  sessionId,
+  room,
+  onDisconnect,
+  onSettings,
+}: {
+  sessionId: string
+  room: Room
+  onDisconnect: () => void
+  onSettings: () => void
+}) {
   const log = useEventLog()
   const bridge = useBridge(room, log)
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
@@ -175,13 +195,38 @@ export default function App() {
           <p className="text-[var(--muted)]">
             {isCliAuth ? 'Sign in to authorize the CLI' : 'Sign in to control your AI coding agents'}
           </p>
+          <p className="text-xs text-[var(--muted)]">
+            AgentCoder is a free app on{' '}
+            <a href="https://freeappstore.online" className="underline hover:text-[var(--ink)]">
+              FreeAppStore
+            </a>
+            .
+          </p>
           <div className="flex flex-col gap-2">
             <SignInButton app={fas} />
             <button
+              type="button"
               onClick={() => fas.auth.signIn('google')}
               className="rounded-xl border border-[var(--border)] bg-white px-6 py-2.5 text-sm font-bold text-[#444] hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
             >
-              <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59a14.5 14.5 0 0 1 0-9.18l-7.98-6.19a24.01 24.01 0 0 0 0 21.56l7.98-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 48 48">
+                <path
+                  fill="#EA4335"
+                  d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+                />
+                <path
+                  fill="#4285F4"
+                  d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M10.53 28.59a14.5 14.5 0 0 1 0-9.18l-7.98-6.19a24.01 24.01 0 0 0 0 21.56l7.98-6.19z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+                />
+              </svg>
               Sign in with Google
             </button>
           </div>
@@ -208,13 +253,19 @@ export default function App() {
   return (
     <div className="flex min-h-[100dvh] flex-col">
       {room ? (
-        <SessionView sessionId={storageGet('ac:session') ?? ''} room={room} onDisconnect={disconnect} onSettings={() => setPage('profile')} />
+        <SessionView
+          sessionId={storageGet('ac:session') ?? ''}
+          room={room}
+          onDisconnect={disconnect}
+          onSettings={() => setPage('profile')}
+        />
       ) : (
         <>
           <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2 sticky top-0 z-50">
             <span className="text-sm font-semibold text-[var(--ink)]">AgentCoder</span>
             <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={() => setPage('profile')}
                 className="rounded px-2 py-0.5 text-sm text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--bg)] transition-colors"
               >

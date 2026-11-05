@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef } from 'react'
 import type { FreeAppStore } from '@freeappstore/sdk'
-import type { TranslationResult } from './types'
+import { useCallback, useRef, useState } from 'react'
 import { parseTranslation } from './parse-translation'
+import type { TranslationResult } from './types'
 import type { EventLog } from './use-event-log'
 
 const TRANSLATE_PROMPT = `You are an AI coding assistant interpreter. A developer is using an AI coding agent (like Claude Code) in their terminal. Below is the raw terminal output from a session.
@@ -26,17 +26,14 @@ interface TranslatorState {
 }
 
 export function callAnthropicApi(app: FreeAppStore, body: object, signal?: AbortSignal) {
-  return app.proxy.fetch(
-    'api.anthropic.com/v1/messages',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      signal,
+  return app.proxy.fetch('api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
     },
-  )
+    body: JSON.stringify(body),
+    signal,
+  })
 }
 
 function describeError(err: unknown): string {
@@ -89,21 +86,22 @@ export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
 
       try {
         // Truncate to ~100KB for token limits
-        const truncated =
-          terminalOutput.length > 100_000
-            ? terminalOutput.slice(-100_000)
-            : terminalOutput
+        const truncated = terminalOutput.length > 100_000 ? terminalOutput.slice(-100_000) : terminalOutput
 
-        const response = await callAnthropicApi(app, {
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 1024,
-          messages: [
-            {
-              role: 'user',
-              content: TRANSLATE_PROMPT + truncated,
-            },
-          ],
-        }, controller.signal)
+        const response = await callAnthropicApi(
+          app,
+          {
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 1024,
+            messages: [
+              {
+                role: 'user',
+                content: TRANSLATE_PROMPT + truncated,
+              },
+            ],
+          },
+          controller.signal,
+        )
 
         if (!response.ok) {
           const errorText = await response.text().catch(() => '')
@@ -111,7 +109,7 @@ export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
           throw new Error(`Translation failed (HTTP ${response.status}): ${detail}`)
         }
 
-        const apiBody = await response.json() as {
+        const apiBody = (await response.json()) as {
           content: Array<{ type: string; text: string }>
         }
         const text = apiBody.content?.[0]?.text ?? ''
@@ -147,32 +145,36 @@ export function useTranslator(app: FreeAppStore | null, log?: EventLog) {
       logRef.current?.info(`Composing response for: "${userIntent.slice(0, 50)}"`)
 
       try {
-        const response = await callAnthropicApi(app, {
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 256,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                'You are helping a developer respond to an AI coding agent running in their terminal.',
-                '',
-                'Agent context:',
-                context,
-                '',
-                'Developer intent:',
-                userIntent,
-                '',
-                'Convert the developer intent into the exact text to send to the terminal. Be concise and direct. Output ONLY the text to send, nothing else.',
-              ].join('\n'),
-            },
-          ],
-        }, controller.signal)
+        const response = await callAnthropicApi(
+          app,
+          {
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 256,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  'You are helping a developer respond to an AI coding agent running in their terminal.',
+                  '',
+                  'Agent context:',
+                  context,
+                  '',
+                  'Developer intent:',
+                  userIntent,
+                  '',
+                  'Convert the developer intent into the exact text to send to the terminal. Be concise and direct. Output ONLY the text to send, nothing else.',
+                ].join('\n'),
+              },
+            ],
+          },
+          controller.signal,
+        )
 
         if (!response.ok) {
           logRef.current?.error(`Compose failed (HTTP ${response.status})`)
           return userIntent
         }
-        const apiBody = await response.json() as {
+        const apiBody = (await response.json()) as {
           content: Array<{ type: string; text: string }>
         }
         const composed = apiBody.content?.[0]?.text?.trim() ?? userIntent

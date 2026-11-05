@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 // parseStartArgs is exported from cli.ts, but importing it triggers main()
 // which calls process.exit. Test the arg parsing logic directly instead.
@@ -19,7 +19,9 @@ function parseStartArgs(cliArgs: string[]) {
     } else if (cliArgs[i] === '--api' && hasValue(i)) {
       apiBase = cliArgs[++i]!
     } else if (cliArgs[i] === '--watch' && hasValue(i)) {
-      watchList = cliArgs[++i]!.split(',').map((s) => s.trim()).filter(Boolean)
+      watchList = cliArgs[++i]!.split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
     }
   }
 
@@ -59,8 +61,15 @@ describe('parseStartArgs', () => {
 
   it('parses all flags together', () => {
     const result = parseStartArgs([
-      'start', '--session', 'sess1', '--token', 'tok1',
-      '--api', 'wss://test', '--watch', 'x,y',
+      'start',
+      '--session',
+      'sess1',
+      '--token',
+      'tok1',
+      '--api',
+      'wss://test',
+      '--watch',
+      'x,y',
     ])
     expect(result.sessionId).toBe('sess1')
     expect(result.token).toBe('tok1')

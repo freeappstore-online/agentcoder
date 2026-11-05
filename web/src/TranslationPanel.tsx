@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { useVoiceInput } from '@freeappstore/sdk/hooks'
 import type { FreeAppStore } from '@freeappstore/sdk'
-import { useTranslator } from './use-translator'
-import { TerminalView } from './TerminalView'
+import { useVoiceInput } from '@freeappstore/sdk/hooks'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { DebugPanel } from './DebugPanel'
-import { AgentTabs, StatusContent, InputBar } from './TranslationWidgets'
+import { TerminalView } from './TerminalView'
+import { AgentTabs, InputBar, StatusContent } from './TranslationWidgets'
 import type { AgentState, UIMessage } from './types'
 import type { EventLog } from './use-event-log'
+import { useTranslator } from './use-translator'
 
 interface TranslationPanelProps {
   app: FreeAppStore
@@ -21,7 +21,18 @@ interface TranslationPanelProps {
   send: (msg: UIMessage) => void
 }
 
-export function TranslationPanel({ app, log, bridgeOnline, bridgeWasOnline, selectedAgent, agents, agentStates, outputBuffer, onSelectAgent, send }: TranslationPanelProps) {
+export function TranslationPanel({
+  app,
+  log,
+  bridgeOnline,
+  bridgeWasOnline,
+  selectedAgent,
+  agents,
+  agentStates,
+  outputBuffer,
+  onSelectAgent,
+  send,
+}: TranslationPanelProps) {
   const { translating, lastTranslation, error, translate, compose, reset: resetTranslation } = useTranslator(app, log)
   const voice = useVoiceInput()
   const [input, setInput] = useState('')
@@ -45,16 +56,28 @@ export function TranslationPanel({ app, log, bridgeOnline, bridgeWasOnline, sele
   translateRef.current = translate
 
   // Load prefs from KV
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once on mount (or is keyed on the state transition it watches); the referenced values are stable or read via refs
   useEffect(() => {
-    app.kv.get<typeof prefs>('prefs').then((p) => { if (p) setPrefs(p) }).catch(console.error).finally(() => setPrefsLoaded(true))
+    app.kv
+      .get<typeof prefs>('prefs')
+      .then((p) => {
+        if (p) setPrefs(p)
+      })
+      .catch(console.error)
+      .finally(() => setPrefsLoaded(true))
   }, [])
 
   // Check if user has an API key
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once on mount (or is keyed on the state transition it watches); the referenced values are stable or read via refs
   useEffect(() => {
-    const check = () => app.keys.has('anthropic').then((has) => {
-      setNeedsKey(!has)
-      log.info(has ? 'API key: configured' : 'API key: not set')
-    }).catch(() => setNeedsKey(true))
+    const check = () =>
+      app.keys
+        .has('anthropic')
+        .then((has) => {
+          setNeedsKey(!has)
+          log.info(has ? 'API key: configured' : 'API key: not set')
+        })
+        .catch(() => setNeedsKey(true))
     check()
     window.addEventListener('focus', check)
     return () => window.removeEventListener('focus', check)
@@ -73,6 +96,7 @@ export function TranslationPanel({ app, log, bridgeOnline, bridgeWasOnline, sele
 
   // Detect task completion: busy -> ready transition
   const agentState = selectedAgent ? agentStates[selectedAgent] : undefined
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once on mount (or is keyed on the state transition it watches); the referenced values are stable or read via refs
   useEffect(() => {
     const prev = prevAgentState.current
     prevAgentState.current = agentState ?? null
@@ -109,7 +133,7 @@ export function TranslationPanel({ app, log, bridgeOnline, bridgeWasOnline, sele
       }
     }, prefs.translateDebounce * 1000)
     return () => clearTimeout(timer)
-  }, [outputBuffer, translate, needsKey, prefs])
+  }, [outputBuffer, translate, needsKey, prefs, prefsLoaded])
 
   const handleCatchUp = () => {
     translate(outputBuffer)
@@ -134,7 +158,12 @@ export function TranslationPanel({ app, log, bridgeOnline, bridgeWasOnline, sele
 
   return (
     <div className="flex flex-1 flex-col">
-      <AgentTabs agents={agents} selectedAgent={selectedAgent} agentStates={agentStates} onSelectAgent={onSelectAgent} />
+      <AgentTabs
+        agents={agents}
+        selectedAgent={selectedAgent}
+        agentStates={agentStates}
+        onSelectAgent={onSelectAgent}
+      />
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={outputRef}>
         <StatusContent
@@ -166,7 +195,9 @@ export function TranslationPanel({ app, log, bridgeOnline, bridgeWasOnline, sele
         selectedAgent={selectedAgent}
         onSend={handleSend}
         onCompose={handleCompose}
-        onInterrupt={() => { if (selectedAgent) send({ type: 'control', action: 'interrupt', agent: selectedAgent }) }}
+        onInterrupt={() => {
+          if (selectedAgent) send({ type: 'control', action: 'interrupt', agent: selectedAgent })
+        }}
       />
     </div>
   )

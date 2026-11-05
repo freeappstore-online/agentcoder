@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Room, RoomMessage } from '@freeappstore/sdk'
-import type { BridgeMessage, UIMessage, AgentState } from './types'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { AgentState, BridgeMessage, UIMessage } from './types'
 import type { EventLog } from './use-event-log'
 
 const MAX_BUFFER_SIZE = 500_000
@@ -46,7 +46,9 @@ export function useBridge(room: Room | null, log?: EventLog) {
       switch (messagePayload.type) {
         case 'heartbeat':
           lastHeartbeat.current = Date.now()
-          logRef.current?.info(`Heartbeat from bridge (${messagePayload.agents.length} agent${messagePayload.agents.length !== 1 ? 's' : ''}: ${messagePayload.agents.join(', ') || 'none'})`)
+          logRef.current?.info(
+            `Heartbeat from bridge (${messagePayload.agents.length} agent${messagePayload.agents.length !== 1 ? 's' : ''}: ${messagePayload.agents.join(', ') || 'none'})`,
+          )
           setState((prev) => ({
             ...prev,
             bridgeOnline: true,
@@ -97,11 +99,15 @@ export function useBridge(room: Room | null, log?: EventLog) {
             if (received === entry.total) {
               const full = entry.parts.join('')
               chunks.current.delete(chunkKey)
-              logRef.current?.info(`Output received: ${messagePayload.agent} (${(full.length / 1024).toFixed(1)}KB, ${entry.total} chunks)`)
+              logRef.current?.info(
+                `Output received: ${messagePayload.agent} (${(full.length / 1024).toFixed(1)}KB, ${entry.total} chunks)`,
+              )
               applyScreen(full, messagePayload.agent)
             }
           } else {
-            logRef.current?.info(`Output received: ${messagePayload.agent} (${(messagePayload.content.length / 1024).toFixed(1)}KB)`)
+            logRef.current?.info(
+              `Output received: ${messagePayload.agent} (${(messagePayload.content.length / 1024).toFixed(1)}KB)`,
+            )
             applyScreen(messagePayload.content, messagePayload.agent)
           }
           break
@@ -138,14 +144,23 @@ export function useBridge(room: Room | null, log?: EventLog) {
       clearInterval(heartbeatCheck)
       chunks.current.clear()
       lastHeartbeat.current = 0
-      setState({ connected: false, bridgeOnline: false, bridgeWasOnline: false, agents: [], agentStates: {}, agentBuffers: {} })
+      setState({
+        connected: false,
+        bridgeOnline: false,
+        bridgeWasOnline: false,
+        agents: [],
+        agentStates: {},
+        agentBuffers: {},
+      })
     }
   }, [room])
 
   const send = useCallback(
     (msg: UIMessage) => {
       if (room) {
-        logRef.current?.info(`Sent ${msg.type}${msg.type === 'command' ? `: "${msg.text.slice(0, 50)}"` : `: ${msg.action}`}`)
+        logRef.current?.info(
+          `Sent ${msg.type}${msg.type === 'command' ? `: "${msg.text.slice(0, 50)}"` : `: ${msg.action}`}`,
+        )
         room.send(msg)
       }
     },

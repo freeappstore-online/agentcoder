@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 // Test the chunking logic extracted from Bridge.sendOutput
 function chunkContent(content: string, chunkSize = 3500): Array<{ content: string; seq: number; total?: number }> {
@@ -47,8 +47,9 @@ describe('chunkContent', () => {
   })
 
   it('preserves all content through chunking', () => {
-    const content = Array.from({ length: 200 }, (_, i) =>
-      `[2026-05-29 10:${String(i).padStart(2, '0')}] Claude edited src/file${i}.ts\n`
+    const content = Array.from(
+      { length: 200 },
+      (_, i) => `[2026-05-29 10:${String(i).padStart(2, '0')}] Claude edited src/file${i}.ts\n`,
     ).join('')
     const result = chunkContent(content)
     const reassembled = result.map((c) => c.content).join('')
@@ -65,7 +66,11 @@ function pruneScreens(lastScreens: Map<string, string>, watchSet: Set<string>): 
 
 describe('lastScreens pruning', () => {
   it('removes sessions not in new watch set', () => {
-    const screens = new Map([['a', 'screenA'], ['b', 'screenB'], ['c', 'screenC']])
+    const screens = new Map([
+      ['a', 'screenA'],
+      ['b', 'screenB'],
+      ['c', 'screenC'],
+    ])
     pruneScreens(screens, new Set(['a', 'c']))
     expect(screens.has('a')).toBe(true)
     expect(screens.has('b')).toBe(false)
@@ -73,13 +78,19 @@ describe('lastScreens pruning', () => {
   })
 
   it('keeps all entries when watch set matches', () => {
-    const screens = new Map([['x', 'sx'], ['y', 'sy']])
+    const screens = new Map([
+      ['x', 'sx'],
+      ['y', 'sy'],
+    ])
     pruneScreens(screens, new Set(['x', 'y']))
     expect(screens.size).toBe(2)
   })
 
   it('clears all entries when watch set is empty', () => {
-    const screens = new Map([['a', 'screenA'], ['b', 'screenB']])
+    const screens = new Map([
+      ['a', 'screenA'],
+      ['b', 'screenB'],
+    ])
     pruneScreens(screens, new Set())
     expect(screens.size).toBe(0)
   })

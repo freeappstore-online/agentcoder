@@ -7,6 +7,8 @@ AI agent interpreter — monitor and control Claude Code, Codex, and other AI ag
 - **Build:** `pnpm build` (web) / `pnpm build:bridge` (CLI)
 - **Deploy:** `git push origin main` (auto-deploys to R2 via GitHub Actions)
 - **Tests:** 44 total — `cd bridge && npx vitest run` (32) + `cd web && npx vitest run` (12)
+- **Platform conventions:** https://freeappstore.online/skills.md (source:
+  https://raw.githubusercontent.com/freeappstore-online/freeappstore/main/SKILLS.md)
 
 ## Architecture
 
@@ -70,16 +72,3 @@ npx github:freeappstore-online/agentcoder start --session <id>
 - FAS backend: `agentcoder.space` in origins.ts allowlist (CORS + return_to)
 - D1 routes table: row (slug=agentcoder, zone=space, r2_prefix=apps/agentcoder)
 - GitHub Actions: deploy.yml → R2, compliance.yml → checks
-
-## MCP
-
-```json
-{
-  "mcpServers": {
-    "freeappstore": {
-      "command": "npx",
-      "args": ["mcp-remote", "https://mcp.freeappstore.online/mcp"]
-    }
-  }
-}
-```

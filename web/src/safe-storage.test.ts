@@ -1,11 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock localStorage as a simple Map-backed object
 let store: Map<string, string>
 const mockStorage = {
   getItem: (key: string) => store.get(key) ?? null,
-  setItem: (key: string, value: string) => { store.set(key, value) },
-  removeItem: (key: string) => { store.delete(key) },
+  setItem: (key: string, value: string) => {
+    store.set(key, value)
+  },
+  removeItem: (key: string) => {
+    store.delete(key)
+  },
 }
 
 beforeEach(() => {
@@ -18,7 +22,7 @@ afterEach(() => {
 })
 
 // Import after mocking so the module picks up the global
-import { storageGet, storageSet, storageRemove } from './safe-storage'
+import { storageGet, storageRemove, storageSet } from './safe-storage'
 
 describe('safe-storage', () => {
   it('get returns value when present', () => {
@@ -42,17 +46,29 @@ describe('safe-storage', () => {
   })
 
   it('get returns null when localStorage throws', () => {
-    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('blocked') } })
+    vi.stubGlobal('localStorage', {
+      getItem: () => {
+        throw new Error('blocked')
+      },
+    })
     expect(storageGet('key')).toBeNull()
   })
 
   it('set does not throw when localStorage throws', () => {
-    vi.stubGlobal('localStorage', { setItem: () => { throw new Error('quota') } })
+    vi.stubGlobal('localStorage', {
+      setItem: () => {
+        throw new Error('quota')
+      },
+    })
     expect(() => storageSet('key', 'val')).not.toThrow()
   })
 
   it('remove does not throw when localStorage throws', () => {
-    vi.stubGlobal('localStorage', { removeItem: () => { throw new Error('blocked') } })
+    vi.stubGlobal('localStorage', {
+      removeItem: () => {
+        throw new Error('blocked')
+      },
+    })
     expect(() => storageRemove('key')).not.toThrow()
   })
 })

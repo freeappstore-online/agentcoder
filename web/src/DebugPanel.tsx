@@ -1,8 +1,13 @@
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { LogEntry } from './use-event-log'
 
 function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return new Date(ts).toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
 }
 
 const levelColor = {
@@ -17,6 +22,7 @@ export function DebugPanel({ entries }: { entries: LogEntry[] }) {
   const errorCount = entries.filter((e) => e.level === 'error').length
   const warnCount = entries.filter((e) => e.level === 'warn').length
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: entries is the trigger: re-scroll when a log line is appended
   useEffect(() => {
     if (open && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -26,6 +32,7 @@ export function DebugPanel({ entries }: { entries: LogEntry[] }) {
   return (
     <div className="border-t border-[var(--border)]">
       <button
+        type="button"
         onClick={() => setOpen(!open)}
         className="flex items-center justify-between w-full px-4 py-1.5 bg-[var(--surface)] hover:bg-[var(--bg)] transition-colors"
       >
@@ -34,10 +41,14 @@ export function DebugPanel({ entries }: { entries: LogEntry[] }) {
         </span>
         <span className="flex items-center gap-2">
           {errorCount > 0 && (
-            <span className="text-[10px] font-medium text-red-500">{errorCount} error{errorCount > 1 ? 's' : ''}</span>
+            <span className="text-[10px] font-medium text-red-500">
+              {errorCount} error{errorCount > 1 ? 's' : ''}
+            </span>
           )}
           {warnCount > 0 && (
-            <span className="text-[10px] font-medium text-amber-500">{warnCount} warn{warnCount > 1 ? 's' : ''}</span>
+            <span className="text-[10px] font-medium text-amber-500">
+              {warnCount} warn{warnCount > 1 ? 's' : ''}
+            </span>
           )}
           <span className="text-[10px] text-[var(--muted)]">{open ? '▼' : '▸'}</span>
         </span>
@@ -47,10 +58,9 @@ export function DebugPanel({ entries }: { entries: LogEntry[] }) {
           ref={scrollRef}
           className="overflow-auto bg-[var(--bg)] px-4 py-2 text-xs font-mono leading-relaxed max-h-48"
         >
-          {entries.length === 0 && (
-            <p className="text-[var(--muted)]">No events yet...</p>
-          )}
+          {entries.length === 0 && <p className="text-[var(--muted)]">No events yet...</p>}
           {entries.map((entry, idx) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: append-only output; the index is the stable identity of a line
             <div key={idx} className="flex gap-2">
               <span className="text-[var(--muted)] shrink-0">{formatTime(entry.time)}</span>
               <span className={`${levelColor[entry.level]} shrink-0 w-10`}>{entry.level}</span>

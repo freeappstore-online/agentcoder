@@ -48,12 +48,7 @@ export class Bridge {
     if (config.watchList) {
       this.watchSet = new Set(config.watchList)
     }
-    this.room = new RoomClient(
-      'agentcoder',
-      config.sessionId,
-      config.token,
-      config.apiBase,
-    )
+    this.room = new RoomClient('agentcoder', config.sessionId, config.token, config.apiBase)
   }
 
   start(): void {
@@ -160,9 +155,7 @@ export class Bridge {
     this.events.onSessions?.(allSessions)
 
     // Only poll watched sessions
-    const sessions = this.watchSet
-      ? allSessions.filter((s) => this.watchSet!.has(s))
-      : []
+    const sessions = this.watchSet ? allSessions.filter((s) => this.watchSet!.has(s)) : []
 
     for (const session of sessions) {
       const target = this.targetOverrides.get(session) ?? tmux.getTarget(session)
@@ -218,14 +211,11 @@ export class Bridge {
 
   private sendHeartbeat(): void {
     const allSessions = tmux.listSessions()
-    const watched = this.watchSet
-      ? allSessions.filter((s) => this.watchSet!.has(s))
-      : []
+    const watched = this.watchSet ? allSessions.filter((s) => this.watchSet!.has(s)) : []
     this.room.send({
       type: 'heartbeat',
       agents: watched,
       uptime: Math.round((Date.now() - this.startTime) / 1000),
     })
   }
-
 }

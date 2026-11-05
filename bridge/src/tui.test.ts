@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { formatUptime, formatAge, formatBytes } from './tui.js'
+import { describe, expect, it } from 'vitest'
+import { formatAge, formatBytes, formatUptime } from './tui.js'
 
 describe('formatUptime', () => {
   it('formats sub-minute as seconds', () => {

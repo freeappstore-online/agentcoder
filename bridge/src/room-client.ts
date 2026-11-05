@@ -223,8 +223,7 @@ export class RoomClient {
 
     if (this.reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
       this.emitError(
-        `Could not connect after ${MAX_RECONNECT_ATTEMPTS} attempts. ` +
-        'Check your network connection and try again.',
+        `Could not connect after ${MAX_RECONNECT_ATTEMPTS} attempts. ` + 'Check your network connection and try again.',
       )
       this.closed = true
       this.setState('error')

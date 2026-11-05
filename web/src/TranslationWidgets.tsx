@@ -1,13 +1,17 @@
-import { Spinner, KeyPrompt, Card } from '@freeappstore/sdk/ui'
-import { VoiceTextArea } from '@freeappstore/sdk/ui'
 import type { FreeAppStore } from '@freeappstore/sdk'
 import type { useVoiceInput } from '@freeappstore/sdk/hooks'
-import type { useTranslator } from './use-translator'
+import { Card, KeyPrompt, Spinner, VoiceTextArea } from '@freeappstore/sdk/ui'
 import { CopyLine } from './ConnectBridge'
 import { storageGet } from './safe-storage'
 import type { AgentState } from './types'
+import type { useTranslator } from './use-translator'
 
-export function AgentTabs({ agents, selectedAgent, agentStates, onSelectAgent }: {
+export function AgentTabs({
+  agents,
+  selectedAgent,
+  agentStates,
+  onSelectAgent,
+}: {
   agents: string[]
   selectedAgent: string | null
   agentStates: Record<string, AgentState>
@@ -19,17 +23,15 @@ export function AgentTabs({ agents, selectedAgent, agentStates, onSelectAgent }:
       {agents.map((agent) => {
         const state = agentStates[agent]
         const isActive = agent === selectedAgent
-        const dot = state === 'busy' ? 'bg-blue-500'
-          : state === 'ready' ? 'bg-emerald-500'
-          : 'bg-[var(--muted)] opacity-40'
+        const dot =
+          state === 'busy' ? 'bg-blue-500' : state === 'ready' ? 'bg-emerald-500' : 'bg-[var(--muted)] opacity-40'
         return (
           <button
+            type="button"
             key={agent}
             onClick={() => onSelectAgent(agent)}
             className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-sm font-medium transition-colors ${
-              isActive
-                ? 'bg-[var(--surface)] text-[var(--ink)]'
-                : 'text-[var(--muted)] hover:text-[var(--ink)]'
+              isActive ? 'bg-[var(--surface)] text-[var(--ink)]' : 'text-[var(--muted)] hover:text-[var(--ink)]'
             }`}
           >
             <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
@@ -41,7 +43,15 @@ export function AgentTabs({ agents, selectedAgent, agentStates, onSelectAgent }:
   )
 }
 
-export function TaskCompletionBanner({ selectedAgent, needsKey, lastTranslation, translating, outputBuffer, onManageKey, onSummarize }: {
+export function TaskCompletionBanner({
+  selectedAgent,
+  needsKey,
+  lastTranslation,
+  translating,
+  outputBuffer,
+  onManageKey,
+  onSummarize,
+}: {
   selectedAgent: string | null
   needsKey: boolean
   lastTranslation: ReturnType<typeof useTranslator>['lastTranslation']
@@ -54,9 +64,7 @@ export function TaskCompletionBanner({ selectedAgent, needsKey, lastTranslation,
     <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/30 p-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
-            Task completed
-          </h3>
+          <h3 className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">Task completed</h3>
           <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
             {selectedAgent} finished working
             {lastTranslation ? '' : needsKey ? ' — add API key for summaries' : ''}
@@ -64,6 +72,7 @@ export function TaskCompletionBanner({ selectedAgent, needsKey, lastTranslation,
         </div>
         {needsKey && outputBuffer.length > 0 && (
           <button
+            type="button"
             onClick={onManageKey}
             className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
           >
@@ -72,6 +81,7 @@ export function TaskCompletionBanner({ selectedAgent, needsKey, lastTranslation,
         )}
         {!needsKey && !lastTranslation && !translating && outputBuffer.length > 0 && (
           <button
+            type="button"
             onClick={onSummarize}
             className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
           >
@@ -83,7 +93,10 @@ export function TaskCompletionBanner({ selectedAgent, needsKey, lastTranslation,
   )
 }
 
-export function TranslationResults({ lastTranslation, outputBuffer }: {
+export function TranslationResults({
+  lastTranslation,
+  outputBuffer,
+}: {
   lastTranslation: NonNullable<ReturnType<typeof useTranslator>['lastTranslation']>
   outputBuffer: string
 }) {
@@ -104,7 +117,9 @@ export function TranslationResults({ lastTranslation, outputBuffer }: {
             </h3>
             <div className="space-y-1">
               {lastTranslation.filesChanged.map((f) => (
-                <div key={f} className="text-sm font-mono text-[var(--ink)]">{f}</div>
+                <div key={f} className="text-sm font-mono text-[var(--ink)]">
+                  {f}
+                </div>
               ))}
             </div>
           </div>
@@ -127,7 +142,22 @@ export function TranslationResults({ lastTranslation, outputBuffer }: {
   )
 }
 
-export function StatusContent({ app, bridgeOnline, bridgeWasOnline, outputBuffer, needsKey, keyDismissed, setKeyDismissed, taskCompleted, selectedAgent, lastTranslation, translating, error, onCatchUp, onManageKey }: {
+export function StatusContent({
+  app,
+  bridgeOnline,
+  bridgeWasOnline,
+  outputBuffer,
+  needsKey,
+  keyDismissed,
+  setKeyDismissed,
+  taskCompleted,
+  selectedAgent,
+  lastTranslation,
+  translating,
+  error,
+  onCatchUp,
+  onManageKey,
+}: {
   app: FreeAppStore
   bridgeOnline: boolean
   bridgeWasOnline: boolean
@@ -151,7 +181,9 @@ export function StatusContent({ app, bridgeOnline, bridgeWasOnline, outputBuffer
             <p className="text-sm font-medium text-[var(--ink)]">Bridge not connected</p>
             <p className="text-xs text-[var(--muted)]">Run this on your machine to connect:</p>
             <div className="text-sm font-mono bg-[var(--bg)] rounded-lg p-3 text-left">
-              <CopyLine text={`npx github:freeappstore-online/agentcoder start --session ${storageGet('ac:session') ?? ''}`} />
+              <CopyLine
+                text={`npx github:freeappstore-online/agentcoder start --session ${storageGet('ac:session') ?? ''}`}
+              />
             </div>
           </div>
         </Card>
@@ -168,7 +200,9 @@ export function StatusContent({ app, bridgeOnline, bridgeWasOnline, outputBuffer
               Check the bridge terminal for errors, or restart it:
             </p>
             <div className="text-sm font-mono bg-[var(--bg)] rounded-lg p-3 text-left">
-              <CopyLine text={`npx github:freeappstore-online/agentcoder start --session ${storageGet('ac:session') ?? ''}`} />
+              <CopyLine
+                text={`npx github:freeappstore-online/agentcoder start --session ${storageGet('ac:session') ?? ''}`}
+              />
             </div>
           </div>
         </div>
@@ -176,15 +210,14 @@ export function StatusContent({ app, bridgeOnline, bridgeWasOnline, outputBuffer
 
       {bridgeOnline && outputBuffer.length === 0 && (!needsKey || keyDismissed) && (
         <Card>
-          <p className="text-sm text-[var(--muted)] text-center py-4">
-            Bridge connected. Waiting for agent output...
-          </p>
+          <p className="text-sm text-[var(--muted)] text-center py-4">Bridge connected. Waiting for agent output...</p>
         </Card>
       )}
 
       {needsKey && bridgeOnline && !keyDismissed && (
         <div className="relative">
           <button
+            type="button"
             onClick={() => setKeyDismissed(true)}
             className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--ink)] text-xs"
           >
@@ -214,6 +247,7 @@ export function StatusContent({ app, bridgeOnline, bridgeWasOnline, outputBuffer
       {outputBuffer.length > 0 && !lastTranslation && !translating && !needsKey && !taskCompleted && (
         <div className="flex justify-center">
           <button
+            type="button"
             onClick={onCatchUp}
             className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
           >
@@ -237,9 +271,7 @@ export function StatusContent({ app, bridgeOnline, bridgeWasOnline, outputBuffer
         </div>
       )}
 
-      {lastTranslation && (
-        <TranslationResults lastTranslation={lastTranslation} outputBuffer={outputBuffer} />
-      )}
+      {lastTranslation && <TranslationResults lastTranslation={lastTranslation} outputBuffer={outputBuffer} />}
 
       {bridgeOnline && outputBuffer.length > 0 && !lastTranslation && (
         <div className="text-xs text-[var(--muted)] text-center">
@@ -250,7 +282,16 @@ export function StatusContent({ app, bridgeOnline, bridgeWasOnline, outputBuffer
   )
 }
 
-export function InputBar({ input, setInput, voice, bridgeOnline, selectedAgent, onSend, onCompose, onInterrupt }: {
+export function InputBar({
+  input,
+  setInput,
+  voice,
+  bridgeOnline,
+  selectedAgent,
+  onSend,
+  onCompose,
+  onInterrupt,
+}: {
   input: string
   setInput: (v: string) => void
   voice: ReturnType<typeof useVoiceInput>
@@ -274,17 +315,19 @@ export function InputBar({ input, setInput, voice, bridgeOnline, selectedAgent, 
   return (
     <div className="border-t border-[var(--border)] p-3">
       <div className="flex gap-2">
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: key events bubble up from the focusable textarea inside */}
         <div className="flex-1" onKeyDown={handleKeyDown}>
           <VoiceTextArea
             value={input}
             onChange={setInput}
             voice={voice}
-            placeholder={bridgeOnline ? "Type a message for your agent..." : "Connect bridge first..."}
+            placeholder={bridgeOnline ? 'Type a message for your agent...' : 'Connect bridge first...'}
             disabled={!bridgeOnline}
           />
         </div>
         <div className="flex flex-col gap-1">
           <button
+            type="button"
             onClick={onSend}
             disabled={!input.trim() || !bridgeOnline || !selectedAgent}
             className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-30"
@@ -293,6 +336,7 @@ export function InputBar({ input, setInput, voice, bridgeOnline, selectedAgent, 
             Send
           </button>
           <button
+            type="button"
             onClick={onInterrupt}
             disabled={!bridgeOnline || !selectedAgent}
             className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950/30 disabled:opacity-30"

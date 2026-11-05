@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 // Test session ID validation (extracted from ConnectBridge)
 const SESSION_ID_RE = /^[a-zA-Z0-9-]{1,32}$/

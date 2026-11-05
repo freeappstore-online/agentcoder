@@ -68,7 +68,9 @@ export class Tui {
   private pickerCursor = 0
   private pickerItems: Array<{ label: string; key: string; indent: boolean; isClaude: boolean }> = []
   private onWatchChanged: ((watched: Map<string, string | undefined>) => void) | null = null
-  private getWindows: ((session: string) => Array<{ target: string; windowName: string; paneTitle: string; isClaude: boolean }>) | null = null
+  private getWindows:
+    | ((session: string) => Array<{ target: string; windowName: string; paneTitle: string; isClaude: boolean }>)
+    | null = null
 
   constructor(roomId: string) {
     this.state = {
@@ -200,7 +202,9 @@ export class Tui {
 
   start(
     onWatchChanged: (watched: Map<string, string | undefined>) => void,
-    getWindows?: (session: string) => Array<{ target: string; windowName: string; paneTitle: string; isClaude: boolean }>,
+    getWindows?: (
+      session: string,
+    ) => Array<{ target: string; windowName: string; paneTitle: string; isClaude: boolean }>,
   ): Promise<TuiAction> {
     this.onWatchChanged = onWatchChanged
     this.getWindows = getWindows ?? null
@@ -389,18 +393,14 @@ export class Tui {
         // Window sub-item
         const prefix = '    '
         const marker = pickerEntry.isClaude ? c(GREEN, '✳') : c(DIM, '·')
-        const label = isCursor
-          ? c(INVERSE + WHITE, ` ${pickerEntry.label} `)
-          : c(GRAY, ` ${pickerEntry.label}`)
+        const label = isCursor ? c(INVERSE + WHITE, ` ${pickerEntry.label} `) : c(GRAY, ` ${pickerEntry.label}`)
         lines.push(`${prefix}${marker} ${label}`)
       } else {
         // Session item
         const session = this.state.sessions.get(pickerEntry.key)!
         const check = session.watched ? c(GREEN, '◉') : c(DIM, '○')
         const arrow = this.expanded === pickerEntry.key ? c(DIM, '▼') : c(DIM, '▸')
-        const label = isCursor
-          ? c(INVERSE + WHITE, ` ${pickerEntry.label} `)
-          : c(WHITE, ` ${pickerEntry.label}`)
+        const label = isCursor ? c(INVERSE + WHITE, ` ${pickerEntry.label} `) : c(WHITE, ` ${pickerEntry.label}`)
         const targetHint = session.target ? c(DIM, ` → ${session.target}`) : ''
         lines.push(`  ${check} ${arrow}${label}${targetHint}`)
       }
@@ -409,10 +409,10 @@ export class Tui {
     lines.push('')
     lines.push(
       `  ${c(DIM, '↑↓')} ${c(GRAY, 'navigate')}    ` +
-      `${c(DIM, '→')} ${c(GRAY, 'expand')}    ` +
-      `${c(DIM, 'space')} ${c(GRAY, 'toggle')}    ` +
-      `${c(DIM, 'a')} ${c(GRAY, 'all')}    ` +
-      `${c(DIM, 'enter')} ${c(GRAY, 'confirm')}`,
+        `${c(DIM, '→')} ${c(GRAY, 'expand')}    ` +
+        `${c(DIM, 'space')} ${c(GRAY, 'toggle')}    ` +
+        `${c(DIM, 'a')} ${c(GRAY, 'all')}    ` +
+        `${c(DIM, 'enter')} ${c(GRAY, 'confirm')}`,
     )
     lines.push('')
 
@@ -441,9 +441,7 @@ export class Tui {
 
     const peerText = peers.length > 0 ? peers.join(', ') : c(DIM, 'none')
     const sentText = totalBytesSent > 0 ? formatBytes(totalBytesSent) : c(DIM, '0')
-    lines.push(
-      `  ${c(DIM, 'Peers')}   ${peerText}    ${c(DIM, 'Sent')} ${sentText}`,
-    )
+    lines.push(`  ${c(DIM, 'Peers')}   ${peerText}    ${c(DIM, 'Sent')} ${sentText}`)
     lines.push('')
 
     // Sessions — show watched first, then unwatched dimmed
@@ -458,12 +456,9 @@ export class Tui {
     } else {
       for (const s of watched) {
         const isSelected = s.name === this.selectedAgent
-        const dot = s.state === 'busy' ? c(BLUE, '●')
-          : s.state === 'ready' ? c(GREEN, '●')
-          : c(YELLOW, '○')
-        const stateText = s.state === 'busy' ? c(BLUE, 'busy')
-          : s.state === 'ready' ? c(GREEN, 'ready')
-          : c(YELLOW, 'waiting')
+        const dot = s.state === 'busy' ? c(BLUE, '●') : s.state === 'ready' ? c(GREEN, '●') : c(YELLOW, '○')
+        const stateText =
+          s.state === 'busy' ? c(BLUE, 'busy') : s.state === 'ready' ? c(GREEN, 'ready') : c(YELLOW, 'waiting')
         const age = formatAge(Date.now() - s.lastActivity)
         const rawName = s.name.length > 20 ? s.name.slice(0, 19) + '…' : s.name.padEnd(20)
         const name = isSelected ? c(CYAN + BOLD, rawName) : c(WHITE, rawName)
@@ -494,7 +489,9 @@ export class Tui {
     lines.push('')
 
     // Footer
-    lines.push(`  ${c(DIM, 'tab')} ${c(GRAY, 'switch agent')}    ${c(DIM, 'w')} ${c(GRAY, 'watch')}    ${c(DIM, 'q')} ${c(GRAY, 'quit')}`)
+    lines.push(
+      `  ${c(DIM, 'tab')} ${c(GRAY, 'switch agent')}    ${c(DIM, 'w')} ${c(GRAY, 'watch')}    ${c(DIM, 'q')} ${c(GRAY, 'quit')}`,
+    )
     lines.push('')
 
     process.stdout.write(CLEAR + lines.join('\n'))

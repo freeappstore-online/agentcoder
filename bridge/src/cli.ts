@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-import { Bridge } from './index.js'
-import { Tui } from './tui.js'
-import * as tmux from './tmux.js'
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { execFile } from 'child_process'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { createServer } from 'http'
 import { homedir } from 'os'
 import { join } from 'path'
-import { createServer } from 'http'
-import { execFile } from 'child_process'
+import { Bridge } from './index.js'
+import * as tmux from './tmux.js'
+import { Tui } from './tui.js'
 
 const CONFIG_DIR = join(homedir(), '.agentcoder')
 const CREDS_FILE = join(CONFIG_DIR, 'credentials.json')
@@ -36,9 +36,7 @@ function saveCredentials(creds: Credentials): void {
 }
 
 function openBrowser(url: string): void {
-  const cmd = process.platform === 'darwin' ? 'open'
-    : process.platform === 'win32' ? 'start'
-    : 'xdg-open'
+  const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open'
   execFile(cmd, [url], () => {})
 }
 
@@ -82,7 +80,9 @@ function login(): Promise<string> {
         }
 
         res.writeHead(200, { 'Content-Type': 'text/html' })
-        res.end('<html><body style="font-family:system-ui;text-align:center;padding:3rem"><h2>Logged in!</h2><p>Return to your terminal. You can close this tab.</p></body></html>')
+        res.end(
+          '<html><body style="font-family:system-ui;text-align:center;padding:3rem"><h2>Logged in!</h2><p>Return to your terminal. You can close this tab.</p></body></html>',
+        )
 
         server.close()
         resolve(token)
@@ -132,7 +132,9 @@ export function parseStartArgs(cliArgs: string[]) {
     } else if (cliArgs[i] === '--api' && hasValue(i)) {
       apiBase = cliArgs[++i]!
     } else if (cliArgs[i] === '--watch' && hasValue(i)) {
-      watchList = cliArgs[++i]!.split(',').map((s) => s.trim()).filter(Boolean)
+      watchList = cliArgs[++i]!.split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
     }
   }
 
@@ -183,17 +185,20 @@ async function handleStart(cliArgs: string[]): Promise<void> {
   const tui = new Tui(sessionId)
   if (watchList) tui.setInitialWatch(watchList)
 
-  const bridge = new Bridge({ token, sessionId, apiBase, watchList }, {
-    onConnected: () => tui.setConnected(true),
-    onDisconnected: () => tui.setConnected(false),
-    onError: (reason) => tui.setError(reason),
-    onPeers: (peers) => tui.setPeers(peers),
-    onSessions: (names) => tui.discoverSessions(names),
-    onSessionState: (agent, state) => tui.updateSession(agent, state),
-    onOutput: (agent, bytes) => tui.recordOutput(agent, bytes),
-    onCommand: (from, agent, text) => tui.recordCommand(from, agent, text),
-    onControl: (from, action) => tui.recordControl(from, action),
-  })
+  const bridge = new Bridge(
+    { token, sessionId, apiBase, watchList },
+    {
+      onConnected: () => tui.setConnected(true),
+      onDisconnected: () => tui.setConnected(false),
+      onError: (reason) => tui.setError(reason),
+      onPeers: (peers) => tui.setPeers(peers),
+      onSessions: (names) => tui.discoverSessions(names),
+      onSessionState: (agent, state) => tui.updateSession(agent, state),
+      onOutput: (agent, bytes) => tui.recordOutput(agent, bytes),
+      onCommand: (from, agent, text) => tui.recordCommand(from, agent, text),
+      onControl: (from, action) => tui.recordControl(from, action),
+    },
+  )
 
   bridge.start()
 

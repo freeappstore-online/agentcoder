@@ -5,10 +5,8 @@ const SESSION_CHECK_TIMEOUT_MS = 3000
 
 /** Strip ANSI escape codes from terminal output */
 function stripAnsi(str: string): string {
-  return str.replace(
-    /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g,
-    '',
-  )
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: matches ANSI escape sequences on purpose
+  return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '')
 }
 
 /** Check if tmux is installed and reachable */
@@ -38,8 +36,12 @@ function tmux(...args: string[]): string {
 export function getTarget(sessionName: string): string {
   // List panes for this session only (no -a flag)
   const paneLines = tmux(
-    'list-panes', '-t', sessionName, '-s',
-    '-F', '#{session_name}:#{window_index}.#{pane_index} #{window_name} #{pane_title}',
+    'list-panes',
+    '-t',
+    sessionName,
+    '-s',
+    '-F',
+    '#{session_name}:#{window_index}.#{pane_index} #{window_name} #{pane_title}',
   )
   if (!paneLines.trim()) return sessionName
 
@@ -58,19 +60,23 @@ export function getTarget(sessionName: string): string {
 }
 
 export interface TmuxWindow {
-  target: string       // e.g. "aipa:1.0"
-  sessionName: string  // e.g. "aipa"
+  target: string // e.g. "aipa:1.0"
+  sessionName: string // e.g. "aipa"
   windowIndex: number
-  windowName: string   // e.g. "shell"
-  paneTitle: string    // e.g. "✳ Claude Code"
+  windowName: string // e.g. "shell"
+  paneTitle: string // e.g. "✳ Claude Code"
   isClaude: boolean
 }
 
 /** List all windows/panes for a session */
 export function listWindows(sessionName: string): TmuxWindow[] {
   const paneLines = tmux(
-    'list-panes', '-t', sessionName, '-s',
-    '-F', '#{session_name}:#{window_index}.#{pane_index}\t#{window_index}\t#{window_name}\t#{pane_title}',
+    'list-panes',
+    '-t',
+    sessionName,
+    '-s',
+    '-F',
+    '#{session_name}:#{window_index}.#{pane_index}\t#{window_index}\t#{window_name}\t#{pane_title}',
   )
   if (!paneLines.trim()) return []
 
@@ -252,4 +258,3 @@ export function extractResponse(captured: string, userInput: string): string {
 
   return response
 }
-

@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 /**
  * Syntax-highlight Claude Code terminal output.
@@ -56,6 +56,7 @@ export function TerminalView({ output }: TerminalViewProps) {
   const [autoScroll, setAutoScroll] = useState(true)
 
   // Auto-scroll to bottom when new output arrives
+  // biome-ignore lint/correctness/useExhaustiveDependencies: output is the trigger: re-scroll when new output arrives
   useEffect(() => {
     if (autoScroll && ref.current) {
       ref.current.scrollTop = ref.current.scrollHeight
@@ -79,9 +80,7 @@ export function TerminalView({ output }: TerminalViewProps) {
   return (
     <div className="border-t border-[var(--border)]">
       <div className="flex items-center justify-between px-4 py-1.5 bg-[var(--surface)]">
-        <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--muted)]">
-          Terminal
-        </span>
+        <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--muted)]">Terminal</span>
         <span className="text-[10px] text-[var(--muted)]">
           {(output.length / 1024).toFixed(1)}KB{!autoScroll && ' — scroll to bottom to resume'}
         </span>
@@ -92,6 +91,7 @@ export function TerminalView({ output }: TerminalViewProps) {
         className="overflow-auto bg-[var(--bg)] px-4 py-2 text-sm font-mono leading-relaxed text-[var(--ink)] max-h-64"
       >
         {visible.map((line, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: append-only output; the index is the stable identity of a line
           <span key={startIdx + i}>
             {highlightLine(line)}
             {'\n'}

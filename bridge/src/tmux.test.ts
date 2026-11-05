@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { detectState, extractResponse, isTmuxAvailable } from './tmux.js'
 
 describe('isTmuxAvailable', () => {
@@ -165,12 +165,7 @@ describe('extractResponse', () => {
   })
 
   it('falls back to input anywhere when no ❯ prefix', () => {
-    const captured = [
-      'some context',
-      'fix the bug',
-      'Fixed the null check in auth.ts.',
-      '❯ ',
-    ].join('\n')
+    const captured = ['some context', 'fix the bug', 'Fixed the null check in auth.ts.', '❯ '].join('\n')
     const response = extractResponse(captured, 'fix the bug')
     expect(response).toContain('Fixed the null check')
   })

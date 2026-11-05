@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 // Test the buffer truncation and chunk reassembly logic from use-bridge
 // (extracted as pure logic tests — the hook itself requires React context)
