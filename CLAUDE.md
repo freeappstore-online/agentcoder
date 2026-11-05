@@ -19,7 +19,7 @@ bridge/          Node.js CLI — TUI dashboard, tmux polling, FAS Room WebSocket
 ├── src/index.ts     Bridge class (events, watchlist, target overrides)
 ├── src/tmux.ts      Smart pane detection, state detection, screen capture
 ├── src/room-client.ts  WebSocket client for FAS Rooms
-└── dist/            Pre-built (committed for npx compatibility)
+└── dist/            Build output (gitignored; built on install by the root `prepare` script)
 
 web/             React PWA — terminal view, agent tabs, translation, compose
 ├── src/App.tsx          Main app (ConnectBridge, StatusBar, TranslationPanel, SessionView)
@@ -57,7 +57,11 @@ npx github:freeappstore-online/agentcoder login
 npx github:freeappstore-online/agentcoder start --session <id>
 ```
 
-`bridge/dist/` is committed to the repo so npx works without a build step. `ws` is in root `package.json` dependencies so npm installs it.
+`npx github:…` installs the **root** package: `bin/agentcoder.js` imports `bridge/dist/cli.js`. `bridge/dist/` is
+not committed — the root `prepare` script (`cd bridge && npm run build`) builds it when npm installs from git
+(and when `pnpm install` runs), and root `files` keeps `bin/` + `bridge/dist/` in the installed package. The bridge
+build tools (`tsup`, `typescript`, `@types/ws`) are therefore also root devDependencies, and `ws` is a root
+dependency so the installed CLI can resolve it.
 
 ## Config & secrets
 

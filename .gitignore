@@ -1,6 +1,5 @@
 node_modules
 dist
-!bridge/dist
 .vite
 *.local
 .DS_Store
