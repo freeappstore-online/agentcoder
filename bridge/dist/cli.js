@@ -4,7 +4,7 @@ import {
   isTmuxAvailable,
   listSessions,
   listWindows
-} from "./chunk-7I4BU4NV.js";
+} from "./chunk-6G23O7QW.js";
 
 // src/tui.ts
 import readline from "readline";

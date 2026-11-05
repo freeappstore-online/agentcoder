@@ -1,6 +1,6 @@
 import {
   Bridge
-} from "./chunk-7I4BU4NV.js";
+} from "./chunk-6G23O7QW.js";
 export {
   Bridge
 };

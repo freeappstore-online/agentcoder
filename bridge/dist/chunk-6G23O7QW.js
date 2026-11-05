@@ -4,6 +4,17 @@ var RECONNECT_BASE_MS = 1e3;
 var RECONNECT_MAX_MS = 3e4;
 var MAX_RECONNECT_ATTEMPTS = 15;
 var API_BASE = "wss://api.freeappstore.online";
+function roomPath(appId, roomId) {
+  return `/v1/apps/${encodeURIComponent(appId)}/rooms/${encodeURIComponent(roomId)}`;
+}
+function ticketUrl(apiBase, appId, roomId) {
+  const base = apiBase.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+  return `${base}${roomPath(appId, roomId)}/ticket`;
+}
+function roomUrl(apiBase, appId, roomId, ticket) {
+  const base = apiBase.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
+  return `${base}${roomPath(appId, roomId)}?ticket=${encodeURIComponent(ticket)}`;
+}
 var RoomClient = class {
   constructor(appId, roomId, token, apiBase = API_BASE) {
     this.appId = appId;
@@ -76,11 +87,29 @@ var RoomClient = class {
     this.setState("closed");
   }
   connect() {
+    void this.connectAsync();
+  }
+  async connectAsync() {
     if (this.closed) return;
     this.setState("connecting");
-    const base = this.apiBase.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
-    const url = `${base}/v1/apps/${encodeURIComponent(this.appId)}/rooms/${encodeURIComponent(this.roomId)}?token=${encodeURIComponent(this.token)}`;
-    const socket = new WebSocket(url);
+    let ticket;
+    try {
+      const res = await fetch(ticketUrl(this.apiBase, this.appId, this.roomId), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.token}` }
+      });
+      if (this.closed) return;
+      if (!res.ok) {
+        if (!this.handleRejection(res.status)) this.retry();
+        return;
+      }
+      ticket = (await res.json()).ticket;
+    } catch {
+      this.retry();
+      return;
+    }
+    if (this.closed) return;
+    const socket = new WebSocket(roomUrl(this.apiBase, this.appId, this.roomId, ticket));
     this.socket = socket;
     socket.on("open", () => {
       this.reconnectAttempt = 0;
@@ -88,21 +117,7 @@ var RoomClient = class {
     });
     socket.on("unexpected-response", (_req, res) => {
       res.resume();
-      const status = res.statusCode ?? 0;
-      if (status === 401 || status === 403) {
-        this._authFailed = true;
-        this.emitError("Token expired or invalid. Run: agentcoder login");
-        this.closed = true;
-        this.setState("error");
-      } else if (status === 404) {
-        this.emitError("Room not found (404). Check the app ID and session ID.");
-        this.closed = true;
-        this.setState("error");
-      } else if (status === 429) {
-        this.emitError("Rate limited (429). Too many connections \u2014 wait a minute and try again.");
-        this.closed = true;
-        this.setState("error");
-      }
+      this.handleRejection(res.statusCode ?? 0);
     });
     socket.on("message", (raw) => {
       try {
@@ -122,12 +137,31 @@ var RoomClient = class {
     });
     socket.on("close", () => {
       if (this.socket === socket) this.socket = null;
-      if (this.closed) return;
-      this.setState("closed");
-      this.scheduleReconnect();
+      this.retry();
     });
     socket.on("error", () => {
     });
+  }
+  /** Fatal HTTP statuses (from the ticket request or the WS upgrade) end the client. Returns true if fatal. */
+  handleRejection(status) {
+    if (status === 401 || status === 403) {
+      this._authFailed = true;
+      this.emitError("Token expired or invalid. Run: agentcoder login");
+    } else if (status === 404) {
+      this.emitError("Room not found (404). Check the app ID and session ID.");
+    } else if (status === 429) {
+      this.emitError("Rate limited (429). Too many connections \u2014 wait a minute and try again.");
+    } else {
+      return false;
+    }
+    this.closed = true;
+    this.setState("error");
+    return true;
+  }
+  retry() {
+    if (this.closed) return;
+    this.setState("closed");
+    this.scheduleReconnect();
   }
   scheduleReconnect() {
     if (this.reconnectTimer || this.closed) return;

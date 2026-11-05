@@ -5,6 +5,22 @@ const RECONNECT_MAX_MS = 30_000
 const MAX_RECONNECT_ATTEMPTS = 15
 const API_BASE = 'wss://api.freeappstore.online'
 
+function roomPath(appId: string, roomId: string): string {
+  return `/v1/apps/${encodeURIComponent(appId)}/rooms/${encodeURIComponent(roomId)}`
+}
+
+/** HTTPS endpoint that issues a room ticket. Accepts a ws(s) or http(s) API base. */
+export function ticketUrl(apiBase: string, appId: string, roomId: string): string {
+  const base = apiBase.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:')
+  return `${base}${roomPath(appId, roomId)}/ticket`
+}
+
+/** WebSocket URL for a room, authenticated by a ticket. Accepts a ws(s) or http(s) API base. */
+export function roomUrl(apiBase: string, appId: string, roomId: string, ticket: string): string {
+  const base = apiBase.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')
+  return `${base}${roomPath(appId, roomId)}?ticket=${encodeURIComponent(ticket)}`
+}
+
 export interface RoomPeer {
   uid: string
   login: string
@@ -102,15 +118,34 @@ export class RoomClient {
   }
 
   private connect(): void {
+    void this.connectAsync()
+  }
+
+  private async connectAsync(): Promise<void> {
     if (this.closed) return
     this.setState('connecting')
 
-    // Normalize protocol: https→wss, http→ws, pass wss/ws through
-    const base = this.apiBase
-      .replace(/^https:/, 'wss:')
-      .replace(/^http:/, 'ws:')
-    const url = `${base}/v1/apps/${encodeURIComponent(this.appId)}/rooms/${encodeURIComponent(this.roomId)}?token=${encodeURIComponent(this.token)}`
-    const socket = new WebSocket(url)
+    // Exchange the session token (Authorization header, kept off the URL) for
+    // a short-lived room ticket; only the ticket goes in the WebSocket URL.
+    let ticket: string
+    try {
+      const res = await fetch(ticketUrl(this.apiBase, this.appId, this.roomId), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.token}` },
+      })
+      if (this.closed) return
+      if (!res.ok) {
+        if (!this.handleRejection(res.status)) this.retry()
+        return
+      }
+      ticket = ((await res.json()) as { ticket: string }).ticket
+    } catch {
+      this.retry()
+      return
+    }
+    if (this.closed) return
+
+    const socket = new WebSocket(roomUrl(this.apiBase, this.appId, this.roomId, ticket))
     this.socket = socket
 
     socket.on('open', () => {
@@ -123,24 +158,9 @@ export class RoomClient {
     socket.on('unexpected-response', (_req, res) => {
       // Drain the response body to prevent memory leaks
       res.resume()
-
-      const status = res.statusCode ?? 0
-      if (status === 401 || status === 403) {
-        this._authFailed = true
-        this.emitError('Token expired or invalid. Run: agentcoder login')
-        this.closed = true
-        this.setState('error')
-      } else if (status === 404) {
-        this.emitError('Room not found (404). Check the app ID and session ID.')
-        this.closed = true
-        this.setState('error')
-      } else if (status === 429) {
-        this.emitError('Rate limited (429). Too many connections — wait a minute and try again.')
-        this.closed = true
-        this.setState('error')
-      }
-      // 5xx: don't emitError — the close handler will trigger a reconnect.
+      // 5xx: not fatal — the close handler will trigger a reconnect.
       // If it keeps failing, the max reconnect limit will fire a fatal error.
+      this.handleRejection(res.statusCode ?? 0)
     })
 
     socket.on('message', (raw) => {
@@ -167,14 +187,35 @@ export class RoomClient {
 
     socket.on('close', () => {
       if (this.socket === socket) this.socket = null
-      if (this.closed) return
-      this.setState('closed')
-      this.scheduleReconnect()
+      this.retry()
     })
 
     socket.on('error', () => {
       // error is always followed by close — handle reconnect there
     })
+  }
+
+  /** Fatal HTTP statuses (from the ticket request or the WS upgrade) end the client. Returns true if fatal. */
+  private handleRejection(status: number): boolean {
+    if (status === 401 || status === 403) {
+      this._authFailed = true
+      this.emitError('Token expired or invalid. Run: agentcoder login')
+    } else if (status === 404) {
+      this.emitError('Room not found (404). Check the app ID and session ID.')
+    } else if (status === 429) {
+      this.emitError('Rate limited (429). Too many connections — wait a minute and try again.')
+    } else {
+      return false
+    }
+    this.closed = true
+    this.setState('error')
+    return true
+  }
+
+  private retry(): void {
+    if (this.closed) return
+    this.setState('closed')
+    this.scheduleReconnect()
   }
 
   private scheduleReconnect(): void {

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { roomUrl, ticketUrl } from './room-client.js'
 
 // Test reconnect backoff logic (mirrors room-client.ts scheduleReconnect)
 const RECONNECT_BASE_MS = 1000
@@ -44,48 +45,34 @@ describe('reconnect limit', () => {
   })
 })
 
-// Test URL construction (mirrors room-client.ts connect)
-function buildRoomUrl(apiBase: string, appId: string, roomId: string, token: string): string {
-  const base = apiBase
-    .replace(/^https:/, 'wss:')
-    .replace(/^http:/, 'ws:')
-  return `${base}/v1/apps/${encodeURIComponent(appId)}/rooms/${encodeURIComponent(roomId)}?token=${encodeURIComponent(token)}`
-}
-
 describe('room URL construction', () => {
-  it('builds correct URL with wss base', () => {
-    const url = buildRoomUrl('wss://api.example.com', 'myapp', 'room1', 'tok123')
-    expect(url).toBe('wss://api.example.com/v1/apps/myapp/rooms/room1?token=tok123')
+  it('builds the ticket URL with an https base', () => {
+    expect(ticketUrl('wss://api.example.com', 'myapp', 'room1')).toBe(
+      'https://api.example.com/v1/apps/myapp/rooms/room1/ticket',
+    )
+    expect(ticketUrl('ws://localhost:8080', 'a', 'r')).toBe('http://localhost:8080/v1/apps/a/rooms/r/ticket')
+    expect(ticketUrl('https://api.example.com', 'a', 'r').startsWith('https://')).toBe(true)
   })
 
-  it('converts https to wss', () => {
-    const url = buildRoomUrl('https://api.example.com', 'myapp', 'room1', 'tok')
-    expect(url.startsWith('wss://')).toBe(true)
+  it('builds the WS URL with only a ticket, never the session token', () => {
+    const url = roomUrl('wss://api.example.com', 'myapp', 'room1', 'tkt123')
+    expect(url).toBe('wss://api.example.com/v1/apps/myapp/rooms/room1?ticket=tkt123')
+    expect(url).not.toContain('token=')
   })
 
-  it('converts http to ws', () => {
-    const url = buildRoomUrl('http://localhost:8080', 'myapp', 'room1', 'tok')
-    expect(url.startsWith('ws://')).toBe(true)
+  it('converts https to wss and http to ws', () => {
+    expect(roomUrl('https://api.example.com', 'a', 'r', 't').startsWith('wss://')).toBe(true)
+    expect(roomUrl('http://localhost:8080', 'a', 'r', 't').startsWith('ws://')).toBe(true)
   })
 
-  it('encodes special characters in app ID', () => {
-    const url = buildRoomUrl('wss://api.example.com', 'my app/test', 'room', 'tok')
-    expect(url).toContain('my%20app%2Ftest')
-  })
-
-  it('encodes special characters in room ID', () => {
-    const url = buildRoomUrl('wss://api.example.com', 'app', 'room/123', 'tok')
-    expect(url).toContain('room%2F123')
-  })
-
-  it('encodes token', () => {
-    const url = buildRoomUrl('wss://api.example.com', 'app', 'room', 'tok=abc&def')
-    expect(url).toContain('tok%3Dabc%26def')
+  it('encodes special characters in app ID, room ID and ticket', () => {
+    expect(roomUrl('wss://api.example.com', 'my app/test', 'room', 't')).toContain('my%20app%2Ftest')
+    expect(ticketUrl('wss://api.example.com', 'app', 'room/123')).toContain('room%2F123')
+    expect(roomUrl('wss://api.example.com', 'app', 'room', 'a.b=c&d')).toContain('a.b%3Dc%26d')
   })
 
   it('passes wss through unchanged', () => {
-    const url = buildRoomUrl('wss://custom.api', 'app', 'room', 'tok')
-    expect(url.startsWith('wss://custom.api/')).toBe(true)
+    expect(roomUrl('wss://custom.api', 'app', 'room', 't').startsWith('wss://custom.api/')).toBe(true)
   })
 })
 
