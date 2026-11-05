@@ -57,11 +57,9 @@ npx github:freeappstore-online/agentcoder login
 npx github:freeappstore-online/agentcoder start --session <id>
 ```
 
-`npx github:…` installs the **root** package: `bin/agentcoder.js` imports `bridge/dist/cli.js`. `bridge/dist/` is
-not committed — the root `prepare` script (`cd bridge && npm run build`) builds it when npm installs from git
-(and when `pnpm install` runs), and root `files` keeps `bin/` + `bridge/dist/` in the installed package. The bridge
-build tools (`tsup`, `typescript`, `@types/ws`) are therefore also root devDependencies, and `ws` is a root
-dependency so the installed CLI can resolve it.
+`npx github:…` installs the root package: `bin/agentcoder.js` imports `bridge/dist/cli.js`, which is gitignored and
+built by the root `prepare` script (`cd bridge && npm run build`) on git install and on `pnpm install`. Root `files` keeps
+`bin/` + `bridge/dist/` in the package; `ws` and the bridge build tools are root deps so npm has them before `prepare`.
 
 ## Config & secrets
 
