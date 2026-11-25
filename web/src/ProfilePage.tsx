@@ -5,9 +5,9 @@ import { storageGet } from './safe-storage'
 
 interface KeyInfo {
   provider: string
-  label: string | null
-  createdAt: number
-  lastUsedAt: number | null
+  label?: string | null
+  createdAt?: number
+  lastUsedAt?: number | null
 }
 
 const AI_PROVIDERS = [
@@ -16,7 +16,7 @@ const AI_PROVIDERS = [
   { id: 'google', name: 'Google AI', desc: 'Gemini models' },
 ]
 
-function formatDate(ts: number | null): string {
+function formatDate(ts?: number | null): string {
   if (!ts) return 'Never'
   return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
